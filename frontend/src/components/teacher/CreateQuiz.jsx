@@ -1,19 +1,58 @@
 import { useEffect, useState } from "react";
 import { getClassTopics, createQuiz } from "../../api";
 
-export default function CreateQuiz({ teacher, selectedClass, onBack }) {
+export default function CreateQuiz({ teacher, selectedClass, draftQuiz, onBack }) {
   const [topics, setTopics] = useState([]);
-  const [title, setTitle] = useState("");
-  const [timeLimit, setTimeLimit] = useState(20);
-  const [questions, setQuestions] = useState([
-    { text: "", difficulty: "medium", question_type: "MCQ", options: ["", "", "", ""], correct_answer: "", topic_id: "" }
-  ]);
+  const [title, setTitle] = useState(draftQuiz?.title || "");
+  const [timeLimit, setTimeLimit] = useState(draftQuiz?.time_limit_minutes || 20);
+  
+  const initialQuestions = draftQuiz && draftQuiz.questions ? 
+    (typeof draftQuiz.questions === 'string' ? JSON.parse(draftQuiz.questions) : draftQuiz.questions) 
+    : [
+      { text: "", difficulty: "medium", question_type: "MCQ", options: ["", "", "", ""], correct_answer: "", topic_id: "" }
+    ];
+
+  const [questions, setQuestions] = useState(initialQuestions);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    getClassTopics(selectedClass.class_id).then(setTopics);
-  }, [selectedClass]);
+    getClassTopics(selectedClass.class_id).then((t) => {
+      setTopics(t);
+      // Auto-map topics if draftQuiz provided topic names instead of IDs
+      if (draftQuiz && draftQuiz.questions) {
+        const qArray = typeof draftQuiz.questions === 'string' ? JSON.parse(draftQuiz.questions) : draftQuiz.questions;
+        const mappedQs = qArray.map(q => {
+          // Normalize question_type: AI may send "MCQ", "mcq", "Multiple Choice" etc.
+          const rawType = (q.question_type || "MCQ").toLowerCase();
+          const qType = rawType === "short_answer" || rawType === "short answer" ? "short_answer" : "MCQ";
+
+          // Normalize difficulty to lowercase
+          const qDifficulty = (q.difficulty || "easy").toLowerCase();
+
+          // Ensure options is always a 4-element array of strings
+          const rawOptions = Array.isArray(q.options) ? q.options : ["", "", "", ""];
+          const qOptions = [...rawOptions, "", "", "", ""].slice(0, 4).map(o => String(o));
+
+          // Map topic name to topic_id
+          let topic_id = q.topic_id || "";
+          if (!topic_id && q.topic) {
+            const found = t.find(tx => tx.name.toLowerCase() === q.topic.toLowerCase());
+            if (found) topic_id = found.topicid;
+          }
+
+          return {
+            ...q,
+            question_type: qType,
+            difficulty: qDifficulty,
+            options: qOptions,
+            topic_id,
+          };
+        });
+        setQuestions(mappedQs);
+      }
+    });
+  }, [selectedClass, draftQuiz]);
 
   const addQuestion = () => {
     setQuestions([...questions, { text: "", difficulty: "medium", question_type: "MCQ", options: ["", "", "", ""], correct_answer: "", topic_id: "" }]);

@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import traceback
 import bcrypt
 from db import get_session
 from auth import (
@@ -12,8 +14,17 @@ from auth import (
 )
 from pydantic import BaseModel
 from typing import List, Optional
+from mcp_server import mcp
 
 app = FastAPI()
+
+app.mount("/mcp", mcp.sse_app())
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    print(f"GLOBAL ERROR: {error_msg}")
+    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": error_msg})
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,6 +71,19 @@ def assert_teacher_owns_student(teacher_id: str, class_id: str, student_id: str,
     if not res.single():
         raise HTTPException(status_code=403, detail="Access denied: student not in this class")
 
+
+
+class SignupIn(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str
+
+class ClassCreateIn(BaseModel):
+    subject: str
+
+class ClassJoinIn(BaseModel):
+    join_code: str
 
 class LoginIn(BaseModel):
     email: str
@@ -173,6 +197,7 @@ def get_behavioral(student_id: str, attempt_id: str, current_user: dict = Depend
                 q.text AS question_text,
                 t.name AS topic,
                 qr.time_taken AS time_taken,
+                coalesce(q.expected_time_seconds, CASE q.difficulty WHEN 'hard' THEN 120 WHEN 'medium' THEN 60 ELSE 30 END) AS expected_time_seconds,
                 qr.is_correct AS is_correct,
                 qr.status AS status,
                 qr.final_answer AS student_answer,
@@ -243,7 +268,7 @@ def get_teacher_classes(teacher_id: str, current_user: dict = Depends(require_te
     with get_session() as session:
         result = session.run("""
             MATCH (t:Teacher {userid: $teacher_id})-[:TEACHES]->(c:Class)-[:BELONGS_TO]->(sub:Subject)
-            RETURN c.classid AS class_id, sub.name AS subject
+            RETURN c.classid AS class_id, sub.name AS subject, c.join_code AS join_code
         """, teacher_id=teacher_id)
         return [dict(record) for record in result]
 
@@ -393,9 +418,9 @@ def get_class_quiz_stats(class_id: str, quiz_id: str, current_user: dict = Depen
 
             RETURN highest_score, lowest_score, avg_score, best_topic, worst_topic,
                    coalesce([x IN behavior_list WHERE x.behavior = 'struggling'][0].topics,    []) AS struggling_topics,
-                   coalesce([x IN behavior_list WHERE x.behavior = 'overconfident'][0].topics, []) AS overconfident_topics,
-                   coalesce([x IN behavior_list WHERE x.behavior = 'careful'][0].topics,       []) AS careful_topics,
-                   coalesce([x IN behavior_list WHERE x.behavior = 'accurate'][0].topics,      []) AS accurate_topics
+                   coalesce([x IN behavior_list WHERE x.behavior = 'reckless'][0].topics, []) AS reckless_topics,
+                   coalesce([x IN behavior_list WHERE x.behavior = 'methodical'][0].topics,       []) AS methodical_topics,
+                   coalesce([x IN behavior_list WHERE x.behavior = 'optimal'][0].topics,      []) AS optimal_topics
         """, class_id=class_id, quiz_id=quiz_id)
 
         record = result.single()
@@ -456,7 +481,7 @@ class QuestionCreateIn(BaseModel):
     options: Optional[List[str]]
     correct_answer: str
     topic_id: str
-    expected_time_seconds: Optional[int] = 30
+    expected_time_seconds: Optional[int] = None  # if not given, derived from difficulty at insert time
 
 
 class QuizCreateIn(BaseModel):
@@ -486,6 +511,9 @@ def create_quiz(payload: QuizCreateIn, current_user: dict = Depends(require_teac
 
         for i, q in enumerate(payload.questions):
             q_id = f"{quiz_id}-Q{i+1:02d}"
+            exp_time = q.expected_time_seconds
+            if exp_time is None:
+                exp_time = {"easy": 15, "medium": 30, "hard": 60}.get(q.difficulty, 30)
             session.run("""
                 MATCH (quiz:Quiz {quizid: $quiz_id})
                 MATCH (t:Topic {topicid: $topic_id})
@@ -505,7 +533,7 @@ def create_quiz(payload: QuizCreateIn, current_user: dict = Depends(require_teac
                  question_type=q.question_type,
                  options=q.options or [],
                  correct_answer=q.correct_answer,
-                 expected_time_seconds=q.expected_time_seconds)
+                 expected_time_seconds=exp_time)
 
         return {"status": "created", "quiz_id": quiz_id}
 
@@ -535,6 +563,19 @@ class AttemptIn(BaseModel):
 def create_attempt(payload: AttemptIn, current_user: dict = Depends(require_student)):
     assert_own_student(payload.student_id, current_user)
     with get_session() as session:
+        # Guard: reject if student already has a completed attempt for this quiz
+        existing = session.run("""
+            MATCH (s:Student {userid: $student_id})-[:HAS_ATTEMPT]->(a:Attempt)-[:FOR_QUIZ]->(q:Quiz {quizid: $quiz_id})
+            WHERE a.ended_reason IN ['submitted', 'timeout']
+            RETURN a.attemptid AS existing_id LIMIT 1
+        """, student_id=payload.student_id, quiz_id=payload.quiz_id).single()
+
+        if existing:
+            raise HTTPException(status_code=409, detail={
+                "error": "duplicate_attempt",
+                "message": "You have already submitted an attempt for this quiz.",
+                "existing_attempt_id": existing["existing_id"]
+            })
         # Create the Attempt node and wire it up
         session.run("""
             MATCH (s:Student {userid: $student_id})
@@ -559,7 +600,13 @@ def create_attempt(payload: AttemptIn, current_user: dict = Depends(require_stud
             session.run("""
                 MATCH (a:Attempt {attemptid: $attempt_id})
                 MATCH (q:Question {questionid: $question_id})
-                WITH a, q, coalesce(q.expected_time_seconds, 30) AS exp_time
+                WITH a, q, coalesce(q.expected_time_seconds,
+                    CASE q.difficulty
+                        WHEN 'easy' THEN 15
+                        WHEN 'medium' THEN 30
+                        WHEN 'hard' THEN 60
+                        ELSE 30
+                    END) AS exp_time
                 CREATE (qr:QuestionResponse {
                     time_taken: $time_taken,
                     status: $status,
@@ -569,10 +616,10 @@ def create_attempt(payload: AttemptIn, current_user: dict = Depends(require_stud
                     revision_count: $revision_count,
                     behavior: CASE 
                         WHEN $status = 'skipped' THEN 'skipped'
-                        WHEN $time_taken < exp_time AND NOT $is_correct THEN 'overconfident'
+                        WHEN $time_taken < exp_time AND NOT $is_correct THEN 'reckless'
                         WHEN $time_taken >= exp_time AND NOT $is_correct THEN 'struggling'
-                        WHEN $time_taken >= exp_time AND $is_correct THEN 'careful'
-                        ELSE 'accurate'
+                        WHEN $time_taken >= exp_time AND $is_correct THEN 'methodical'
+                        ELSE 'optimal'
                     END
                 })
                 CREATE (a)-[:HAS_RESPONSE]->(qr)
@@ -594,3 +641,228 @@ def create_attempt(payload: AttemptIn, current_user: dict = Depends(require_stud
         """, attempt_id=payload.attempt_id)
 
         return {"status": "created", "attempt_id": payload.attempt_id}
+
+# --- New Endpoints ---
+
+@app.get("/subjects")
+def get_subjects():
+    with get_session() as session:
+        result = session.run("MATCH (s:Subject) RETURN s.name AS name")
+        return [{"name": record["name"]} for record in result]
+
+@app.post("/signup")
+def signup(payload: SignupIn):
+    if payload.role not in ["student", "teacher"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    
+    with get_session() as session:
+        # Check if email exists
+        res = session.run("MATCH (n) WHERE n.email = $email RETURN n LIMIT 1", email=payload.email)
+        if res.single():
+            raise HTTPException(status_code=400, detail="Email already registered")
+            
+        import uuid
+        
+        userid = ("S" if payload.role == "student" else "T") + str(uuid.uuid4())[:8].upper()
+        hashed = bcrypt.hashpw(payload.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        if payload.role == "student":
+            session.run("CREATE (s:Student {userid: $uid, name: $name, email: $email, password_hash: $pw})",
+                        uid=userid, name=payload.name, email=payload.email, pw=hashed)
+        else:
+            session.run("CREATE (t:Teacher {userid: $uid, name: $name, email: $email, password_hash: $pw})",
+                        uid=userid, name=payload.name, email=payload.email, pw=hashed)
+        
+        token = create_access_token(userid, payload.role)
+        return {"role": payload.role, "token": token, "userid": userid, "name": payload.name, "email": payload.email}
+
+import string
+import random
+
+@app.post("/classes/create")
+def create_class(payload: ClassCreateIn, current_user: dict = Depends(require_teacher)):
+    with get_session() as session:
+        res = session.run("MATCH (s:Subject {name: $name}) RETURN s", name=payload.subject)
+        if not res.single():
+            raise HTTPException(status_code=400, detail="Subject not found")
+            
+        t_res = session.run("MATCH (t:Teacher {userid: $tid}) RETURN t.name AS name", tid=current_user["sub"])
+        t_record = t_res.single()
+        # Use the first word of the teacher's name
+        teacher_name = t_record["name"].split()[0].upper() if t_record and t_record["name"] else "T"
+        
+        # Map Math to MATH and Science to SCI, otherwise fallback to first 3 letters
+        subject_map = {"Math": "MATH", "Science": "SCI"}
+        subject_code = subject_map.get(payload.subject, payload.subject[:3].upper())
+        base_id = f"C7{subject_code}"
+        
+        classid = None
+        for i in range(1, len(teacher_name) + 1):
+            candidate = f"{base_id}-{teacher_name[:i]}"
+            check_res = session.run("MATCH (c:Class {classid: $cid}) RETURN c", cid=candidate)
+            if not check_res.single():
+                classid = candidate
+                break
+                
+        if not classid:
+            import uuid
+            classid = f"{base_id}-{teacher_name}-{str(uuid.uuid4())[:4].upper()}"
+
+        join_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
+        session.run("""
+            MATCH (t:Teacher {userid: $tid})
+            MATCH (s:Subject {name: $subj})
+            CREATE (c:Class {classid: $cid, join_code: $code})
+            CREATE (c)-[:BELONGS_TO]->(s)
+            CREATE (t)-[:TEACHES]->(c)
+        """, tid=current_user["sub"], subj=payload.subject, cid=classid, code=join_code)
+        
+        return {"class_id": classid, "join_code": join_code, "subject": payload.subject}
+
+@app.post("/classes/join")
+def join_class(payload: ClassJoinIn, current_user: dict = Depends(require_student)):
+    with get_session() as session:
+        res = session.run("""
+            MATCH (c:Class {join_code: $code})
+            RETURN c.classid AS cid
+        """, code=payload.join_code)
+        
+        record = res.single()
+        if not record:
+            raise HTTPException(status_code=404, detail="Invalid join code")
+            
+        session.run("""
+            MATCH (s:Student {userid: $sid})
+            MATCH (c:Class {join_code: $code})
+            MERGE (s)-[:ENROLLED_IN]->(c)
+        """, sid=current_user["sub"], code=payload.join_code)
+        
+        return {"success": True, "class_id": record["cid"]}
+
+@app.get("/classes/{class_id}/overall-stats")
+def get_class_overall_stats(class_id: str, current_user: dict = Depends(require_teacher)):
+    with get_session() as session:
+        # Summary Stats
+        summary_res = session.run("""
+            MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student)
+            MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
+            MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)
+            RETURN 
+                count(qr) AS total_questions,
+                avg(qr.time_taken) AS avg_time,
+                sum(CASE WHEN qr.is_correct THEN 1 ELSE 0 END) AS total_correct,
+                count(DISTINCT a) AS total_attempts,
+                count(DISTINCT s) AS active_students
+        """, class_id=class_id)
+        
+        s_record = summary_res.single()
+        if not s_record or s_record["total_questions"] == 0:
+            return {
+                "summary": {"total_attempts": 0, "active_students": 0, "avg_time": 0, "accuracy": 0},
+                "behavioral": [], "best_topics": [], "weakest_topics": []
+            }
+            
+        total_q = s_record["total_questions"]
+        summary = {
+            "total_attempts": s_record["total_attempts"],
+            "active_students": s_record["active_students"],
+            "avg_time": round(s_record["avg_time"], 1),
+            "accuracy": round((s_record["total_correct"] / total_q) * 100, 1)
+        }
+        
+        # Behavioral Topics Mapping
+        behavior_res = session.run("""
+            MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student)
+            MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
+            MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)-[:FOR_QUESTION]->(qst:Question)-[:PART_OF]->(t:Topic)
+            RETURN qr.behavior AS behavior, t.name AS topic, qr.status AS status
+        """, class_id=class_id)
+        behavioral = [dict(r) for r in behavior_res]
+        
+        # Topic aggregations for best and weakest
+        topic_res = session.run("""
+            MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student)
+            MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
+            MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)-[:FOR_QUESTION]->(qst:Question)-[:PART_OF]->(t:Topic)
+            RETURN 
+                t.name AS topic, count(qst) AS total, sum(CASE WHEN qr.is_correct THEN 1 ELSE 0 END) AS correct
+            ORDER BY correct * 1.0 / total DESC
+        """, class_id=class_id)
+        topics = [{"topic": r["topic"], "accuracy": round(r["correct"] / r["total"] * 100, 1)} for r in topic_res]
+        
+        best_topics = topics[:3]
+        weakest_topics = topics[-3:] if len(topics) > 3 else topics[::-1]
+        
+        return {
+            "summary": summary,
+            "behavioral": behavioral,
+            "best_topics": best_topics,
+            "weakest_topics": weakest_topics
+        }
+
+@app.get("/classes/{class_id}/students/{student_id}/behavioral")
+def get_class_student_behavioral_stats(class_id: str, student_id: str, current_user: dict = Depends(get_current_user)):
+    with get_session() as session:
+        # Summary Stats
+        summary_res = session.run("""
+            MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student {userid: $student_id})
+            MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
+            MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)
+            RETURN 
+                count(qr) AS total_questions,
+                avg(qr.time_taken) AS avg_time,
+                sum(CASE WHEN qr.is_correct THEN 1 ELSE 0 END) AS total_correct,
+                count(DISTINCT a) AS total_attempts
+        """, class_id=class_id, student_id=student_id)
+        
+        s_record = summary_res.single()
+        if not s_record or s_record["total_questions"] == 0:
+            return {"summary": {"total_attempts": 0, "avg_time": 0, "accuracy": 0}, "behavioral": []}
+            
+        total_q = s_record["total_questions"]
+        summary = {
+            "total_attempts": s_record["total_attempts"],
+            "avg_time": round(s_record["avg_time"], 1),
+            "accuracy": round((s_record["total_correct"] / total_q) * 100, 1)
+        }
+        
+        # Behavioral Topics Mapping
+        behavior_res = session.run("""
+            MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student {userid: $student_id})
+            MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
+            MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)-[:FOR_QUESTION]->(qst:Question)-[:PART_OF]->(t:Topic)
+            RETURN qr.behavior AS behavior, t.name AS topic, qr.status AS status
+        """, class_id=class_id, student_id=student_id)
+        behavioral = [dict(r) for r in behavior_res]
+        
+        return {
+            "summary": summary,
+            "behavioral": behavioral
+        }
+
+
+class HistoryMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[HistoryMessage] = []
+
+@app.post("/chat")
+async def chat_endpoint(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("sub")
+    role = current_user.get("role")
+    
+    from mcp_client import run_chat
+    try:
+        history = [h.dict() for h in payload.history]
+        response_text = await run_chat(user_id, role, payload.message, history)
+        return {"response": response_text}
+    except Exception as e:
+        import traceback
+        error_msg = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+        with open("error.log", "w") as f:
+            f.write(error_msg)
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")

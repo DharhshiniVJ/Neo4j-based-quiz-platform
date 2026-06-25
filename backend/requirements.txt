@@ -2,3 +2,8 @@ fastapi
 uvicorn
 neo4j
 python-dotenv
+bcrypt
+python-jose
+redis
+mcp
+cerebras-cloud-sdk

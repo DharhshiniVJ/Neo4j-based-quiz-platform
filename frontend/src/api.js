@@ -50,3 +50,48 @@ export const getClassStudentTopicScores = (classId, studentId) => apiFetch(`/cla
 export const getQuizQuestions = (quizId) => apiFetch(`/quizzes/${quizId}/questions`);
 export const postQuizToClass = (quizId, classId) => apiFetch(`/quizzes/post`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quiz_id: quizId, class_id: classId }) });
 export const submitAttempt = (payload) => apiFetch(`/attempts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+
+export async function signupUser(payload) {
+  return apiFetch('/signup', {
+    method: 'POST',
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getSubjects() {
+  return apiFetch('/subjects');
+}
+
+export async function createTeacherClass(subject) {
+  return apiFetch('/classes/create', {
+    method: 'POST',
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subject })
+  });
+}
+
+export async function joinClass(joinCode) {
+  return apiFetch('/classes/join', {
+    method: 'POST',
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ join_code: joinCode })
+  });
+}
+
+export async function getClassOverallStats(classId) {
+  return apiFetch(`/classes/${classId}/overall-stats`);
+}
+
+export async function getClassStudentBehavioralStats(classId, studentId) {
+  return apiFetch(`/classes/${classId}/students/${studentId}/behavioral`);
+}
+
+export async function sendChatMessage(message, history = []) {
+  return apiFetch(`/chat`, {
+    method: 'POST',
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history })
+  });
+}
+

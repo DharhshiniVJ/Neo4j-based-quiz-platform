@@ -3,6 +3,7 @@ import LoginPage from "./components/LoginPage";
 import StudentDashboard from "./components/student/StudentDashboard";
 import TeacherDashboard from "./components/teacher/TeacherDashboard";
 import { getToken, clearToken } from "./api";
+import ChatbotWidget from "./components/ChatbotWidget";
 
 function parseJwt(token) {
   try {
@@ -55,8 +56,18 @@ export default function App() {
   }
 
   if (user.role === "teacher") {
-    return <TeacherDashboard teacher={user} onLogout={handleLogout} />;
+    return (
+      <>
+        <TeacherDashboard teacher={user} onLogout={handleLogout} />
+        <ChatbotWidget role={user.role} />
+      </>
+    );
   }
 
-  return <StudentDashboard student={user} onLogout={handleLogout} />;
+  return (
+    <>
+      <StudentDashboard student={user} onLogout={handleLogout} />
+      <ChatbotWidget role={user.role} />
+    </>
+  );
 }

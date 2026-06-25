@@ -1,12 +1,38 @@
 import { useEffect, useState } from "react";
-import { getStudentClasses } from "../../api";
+import { getStudentClasses, joinClass } from "../../api";
 
 export default function MyClasses({ student, onSelectClass, onLogout }) {
   const [classes, setClasses] = useState([]);
+  const [showJoin, setShowJoin] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    getStudentClasses(student.userid).then(setClasses);
+    loadClasses();
   }, [student]);
+
+  const loadClasses = () => {
+    getStudentClasses(student.userid).then(setClasses);
+  };
+
+  const handleJoin = async () => {
+    if (!joinCode || joinCode.length !== 6) {
+      alert("Please enter a valid 6-character join code.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await joinClass(joinCode.toUpperCase());
+      alert("Successfully joined the class!");
+      setJoinCode("");
+      setShowJoin(false);
+      loadClasses();
+    } catch (err) {
+      alert("Invalid join code or you are already in this class.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{ padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
@@ -25,9 +51,37 @@ export default function MyClasses({ student, onSelectClass, onLogout }) {
         </button>
       </div>
 
-      <h2 style={{ fontSize: "28px", textTransform: "uppercase", marginBottom: "24px", paddingBottom: "12px", borderBottom: "4px solid var(--border)" }}>
-        Your Enrolled Classes
-      </h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", paddingBottom: "12px", borderBottom: "4px solid var(--border)" }}>
+        <h2 style={{ fontSize: "28px", textTransform: "uppercase", margin: 0 }}>
+          Your Enrolled Classes
+        </h2>
+        <button className="brutal-btn" onClick={() => setShowJoin(!showJoin)}>
+          {showJoin ? "Cancel" : "+ Join Class"}
+        </button>
+      </div>
+
+      {showJoin && (
+        <div className="brutal-card" style={{ marginBottom: "32px", borderLeft: "8px solid var(--accent)" }}>
+          <h3 style={{ margin: "0 0 16px", textTransform: "uppercase" }}>Join a Class</h3>
+          <div style={{ display: "flex", gap: "16px", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ fontWeight: "700" }}>Class Join Code</label>
+              <input
+                className="brutal-input"
+                type="text"
+                maxLength={6}
+                placeholder="Enter 6-character code"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+              />
+            </div>
+            <button className="brutal-btn" onClick={handleJoin} disabled={loading || joinCode.length !== 6}>
+              {loading ? "Joining..." : "Join"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "24px" }}>
         {classes.map((c, idx) => {

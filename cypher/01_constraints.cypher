@@ -11,6 +11,7 @@ CREATE CONSTRAINT topic_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.topicid IS UNIQ
 CREATE CONSTRAINT quiz_id IF NOT EXISTS FOR (q:Quiz) REQUIRE q.quizid IS UNIQUE;
 CREATE CONSTRAINT question_id IF NOT EXISTS FOR (q:Question) REQUIRE q.questionid IS UNIQUE;
 CREATE CONSTRAINT attempt_id IF NOT EXISTS FOR (a:Attempt) REQUIRE a.attemptid IS UNIQUE;
-
+CREATE CONSTRAINT class_join_code IF NOT EXISTS FOR (c:Class) REQUIRE c.join_code IS UNIQUE;
+CREATE INDEX topic_name_index IF NOT EXISTS FOR (t:Topic) ON (t.name);
 // Verify:
 // SHOW CONSTRAINTS;

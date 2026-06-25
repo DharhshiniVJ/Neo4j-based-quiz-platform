@@ -99,7 +99,7 @@ export default function TakeQuiz({ student, quiz, onDone, onBack }) {
   const handleSubmit = async (finalResponses) => {
     setSubmitting(true);
     const payload = {
-      attempt_id: `ATT-${student.userid}-${quiz.quizid}-${Date.now()}`,
+      attempt_id: `ATT-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
       student_id: student.userid,
       quiz_id: quiz.quizid,
       timestamp: new Date().toISOString(),

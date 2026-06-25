@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getTeacherStudents, getClassQuizzes } from "../../api";
 
-export default function ClassDetail({ teacher, selectedClass, onSelectStudent, onCreateQuiz, onSelectQuizReport, onBack }) {
+export default function ClassDetail({ teacher, selectedClass, onSelectStudent, onCreateQuiz, onSelectQuizReport, onViewPerformance, onBack }) {
   const [students, setStudents] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
 
@@ -21,9 +21,14 @@ export default function ClassDetail({ teacher, selectedClass, onSelectStudent, o
           <h1 style={{ margin: "0 0 8px", fontSize: "32px", textTransform: "uppercase" }}>{selectedClass.subject}</h1>
           <div className="brutal-badge">Class {selectedClass.class_id}</div>
         </div>
-        <button className="brutal-btn" onClick={onCreateQuiz} style={{ fontSize: "18px" }}>
-          + Create New Quiz
-        </button>
+        <div style={{ display: "flex", gap: "16px" }}>
+          <button className="brutal-btn brutal-btn-white" onClick={onViewPerformance} style={{ fontSize: "18px" }}>
+            View Class Performance
+          </button>
+          <button className="brutal-btn" onClick={onCreateQuiz} style={{ fontSize: "18px" }}>
+            + Create New Quiz
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", alignItems: "start" }}>

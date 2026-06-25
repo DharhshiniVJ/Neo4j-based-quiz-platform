@@ -5,7 +5,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path=env_path)
 
 SECRET_KEY = os.getenv("JWT_SECRET", "fallback-secret-change-me")
 ALGORITHM  = os.getenv("JWT_ALGORITHM", "HS256")

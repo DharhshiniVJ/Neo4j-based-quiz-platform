@@ -80,15 +80,16 @@ export default function QuizReport({ selectedClass, selectedQuiz, onSelectAttemp
                 <div className="brutal-card">
                   <h3 style={{ margin: "0 0 16px", fontSize: "20px", textTransform: "uppercase" }}>Behavioral Focus Areas</h3>
                   {[
-                    { label: "Struggling (Slow & Wrong)",    key: "struggling_topics",   accent: "var(--primary)"   },
-                    { label: "Overconfident (Fast & Wrong)", key: "overconfident_topics", accent: "var(--accent)"    },
-                    { label: "Careful (Slow & Right)",       key: "careful_topics",       accent: "var(--secondary)" },
-                    { label: "Accurate (Fast & Right)",      key: "accurate_topics",      accent: "var(--secondary)" },
-                  ].map(({ label, key, accent }, i, arr) => (
+                    { label: "Struggling", description: "Students take a long time but still get the answer wrong.", key: "struggling_topics", accent: "var(--primary)" },
+                    { label: "Reckless", description: "Students answer very quickly but often get it wrong.", key: "reckless_topics", accent: "var(--accent)" },
+                    { label: "Methodical", description: "Students take their time and carefully arrive at the correct answer.", key: "methodical_topics", accent: "var(--secondary)" },
+                    { label: "Optimal", description: "Students quickly and accurately arrive at the correct answer.", key: "optimal_topics", accent: "var(--secondary)" },
+                  ].map(({ label, description, key, accent }, i, arr) => (
                     <div key={key} style={{ marginBottom: i < arr.length - 1 ? "12px" : 0, paddingBottom: i < arr.length - 1 ? "12px" : 0, borderBottom: i < arr.length - 1 ? "2px solid var(--border)" : "none" }}>
-                      <strong style={{ display: "block", marginBottom: "8px", color: accent }}>{label}:</strong>
+                      <strong style={{ display: "block", marginBottom: "4px", color: accent, fontSize: "18px" }}>{label}</strong>
+                      <p style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#64748b" }}>{description}</p>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                        {stats[key].length > 0
+                        {stats[key] && stats[key].length > 0
                           ? stats[key].map(topic => (
                               <span key={topic} className="brutal-badge" style={{ fontSize: "12px" }}>{topic}</span>
                             ))

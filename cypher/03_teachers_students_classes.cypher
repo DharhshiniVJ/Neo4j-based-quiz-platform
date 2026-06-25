@@ -9,9 +9,9 @@ CREATE (:Teacher {userid: "T002", name: "Holt", email: "holt@school.edu"});
 // --- Classes (linked to Subject) ---
 MATCH (math:Subject {name: "Math"})
 MATCH (sci:Subject {name: "Science"})
-CREATE (:Class {classid: "C7SCI-H"})-[:BELONGS_TO]->(sci)
-CREATE (:Class {classid: "C7SCI-D"})-[:BELONGS_TO]->(sci)
-CREATE (:Class {classid: "C7MATH-H"})-[:BELONGS_TO]->(math);
+CREATE (:Class {classid: "C7SCI-H", join_code: "2TSAQB"})-[:BELONGS_TO]->(sci)
+CREATE (:Class {classid: "C7SCI-D", join_code: "E01TRZ"})-[:BELONGS_TO]->(sci)
+CREATE (:Class {classid: "C7MATH-H", join_code: "C1JQIF"})-[:BELONGS_TO]->(math);
 
 // --- Teacher -> Class (TEACHES) ---
 MATCH (h:Teacher {userid: "T001"})
