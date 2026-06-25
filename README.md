@@ -74,6 +74,6 @@ npm run dev
 
 ### 5. Using the App
 1. Open `http://localhost:5173` in your browser.
-2. **Teacher Login**: `jessica.day@teacher.edu` / `password123`
+2. **Teacher Login**: `holly.flax@school.edu` / `password123`
 3. **Student Login**: `jake.peralta@student.edu` / `password123`
 4. Click the floating chat button in the bottom right to talk to the MCP Assistant. Try asking: *"Draft a 10 question math quiz"* or *"Show me the performance of my math class."*
