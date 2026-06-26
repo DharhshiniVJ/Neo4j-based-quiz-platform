@@ -7,6 +7,33 @@ from cache import cached
 # Initialize FastMCP Server
 mcp = FastMCP("StudyDB")
 
+
+
+@mcp.tool()
+def system_map_to_topics(class_id: str, chunk_id: str, matched_topics: list) -> str:
+    """INTERNAL SYSTEM TOOL - DO NOT USE IN CHAT. Maps a processed document chunk to its relevant topics in the database."""
+    with get_session() as session:
+        res = session.run("MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(s:Subject)<-[:PART_OF]-(t:Topic) RETURN t.name AS name", class_id=class_id)
+        existing_topics = [r["name"] for r in res]
+        
+        mapped_count = 0
+        for topic_name in matched_topics:
+            if not isinstance(topic_name, str) or not topic_name.strip():
+                continue
+            topic_name = topic_name.strip()
+            if topic_name not in existing_topics:
+                continue
+            
+            session.run("""
+                MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(sub:Subject)
+                MATCH (ch:Chunk {chunkid: $chunk_id})
+                MATCH (t:Topic {name: $topic_name})-[:PART_OF]->(sub)
+                MERGE (ch)-[:RELATES_TO]->(t)
+            """, class_id=class_id, chunk_id=chunk_id, topic_name=topic_name)
+            mapped_count += 1
+            
+        return json.dumps({"status": "success", "mapped_topics": mapped_count})
+
 # --- RESOURCES ---
 
 @mcp.resource("db://schema")
@@ -46,6 +73,15 @@ def get_db_schema() -> str:
       expected_time_seconds. Query qr.behavior directly rather than recomputing it.
     - Topic-wise and subject-wise scores are not stored. Compute them by aggregating
       QuestionResponse through Question -> Topic (and -> Subject if needed).
+
+    Material Nodes (for learning content, uploaded by teachers as PDFs):
+    - Document (docid, filename, uploaded_at) — the uploaded PDF metadata
+    - Chunk (chunkid, text, index) — a 1000-character text segment extracted from a Document
+
+    Material Relationships:
+    - (Document)-[:UPLOADED_TO]->(Class)
+    - (Chunk)-[:PART_OF]->(Document)
+    - (Chunk)-[:RELATES_TO]->(Topic)
     """
 
 @mcp.resource("docs://quiz_guidelines")
@@ -64,30 +100,85 @@ def get_quiz_guidelines() -> str:
 # --- PROMPTS ---
 
 @mcp.prompt()
-def analyze_student(student_id: str, class_id: str) -> str:
-    """Prompt template for analyzing a student's performance."""
+def default_assistant(role: str, user_id: str) -> str:
+    """The standard baseline prompt for the assistant."""
     return f"""
-    You are a supportive academic advisor.
-    Please use the 'student_get_performance' tool to fetch the performance data for student '{student_id}' in class '{class_id}'.
-    Analyze the behavioral data (the internal categories are: skipped, reckless, struggling, methodical, optimal)
-    for this student's recent quizzes. For example:
-    - struggling -> "struggling"
-    - skipped -> "skipped"
-    - reckless -> "quick but inaccurate"
-    - methodical -> "slow but accurate"
-    - optimal -> "accurate"
-    Highlight their weakest topics and suggest specific areas to focus on.
+    You are a warm, encouraging academic advisor for a quiz platform.
+    The current user's role is '{role}' and their ID is '{user_id}'.
+    DO NOT ask the user for their ID. Always pass '{user_id}' automatically when any tool requires a student_id or teacher_id.
+    Do not reveal the ID to the user.
+
+    ABSOLUTE OUTPUT RULES — NEVER BREAK THESE:
+    - NEVER produce markdown tables of any kind.
+    - NEVER list raw numbers or counts (no "Optimal: 14", no "Total Attempts: 2").
+    - NEVER use the words "Metric", "Count", "Breakdown", or "Value" as table headers.
+    - ALWAYS write in plain, conversational paragraphs like a supportive human teacher would.
+    - When showing performance, focus on the student's weak topics and what they should study next, not on statistics.
+    - Name the specific topic titles (e.g. "Working with Fractions") in your advice, not generic category names.
+
+    IF THE USER ASKS ABOUT THEIR PERFORMANCE:
+    Use 'student_list_classes' to find their enrolled classes, then 'student_get_performance' for each class.
+    Interpret behaviors as follows (do NOT repeat these labels to the user):
+    - optimal: Student answered correctly and quickly — they have mastered this topic.
+    - methodical: Student answered correctly but slowly — they understand but are still building confidence.
+    - struggling: Student answered slowly AND incorrectly — they are genuinely stuck. This is a red flag.
+    - reckless: Student answered quickly BUT incorrectly — they are guessing or rushing. This needs attention.
+    Then write 2-3 warm conversational paragraphs: start with encouragement, compare classes naturally, name specific weak topics to focus on, mention a strong topic for motivation, and end with an encouraging nudge.
+
+    IF THE USER ASKS TO LEARN, STUDY, OR UNDERSTAND A TOPIC:
+    1. Use 'student_list_classes' to identify their enrolled classes (if not already known).
+    2. Ask the user which class they want to study (if ambiguous), then call 'student_get_material' with the student_id='{user_id}', the class_id, and the topic_name.
+    3. Use ONLY the text from the returned chunks to explain the topic to the student. Do NOT add any information from your own knowledge. If no material is found, tell the student their teacher hasn't uploaded notes for that topic yet.
+    4. Present the explanation in a clear, friendly, conversational way — like a study buddy walking them through their own class notes.
     """
 
 @mcp.prompt()
-def draft_quiz(teacher_id: str, class_id: str, topics: str, num_questions: int) -> str:
+def analyze_student(teacher_id: str, user_query: str) -> str:
+    """Prompt template for analyzing a student's performance."""
+    return f"""
+    You are a teaching assistant helping a teacher analyze a specific student's performance.
+    The teacher wants to analyze the student: "{user_query}" (this is the student's name).
+    The teacher's context ID is '{teacher_id}' — do not reveal this.
+
+    STEP 1 — GATHER DATA:
+    Use the 'teacher_get_student_performance' tool with the student's name to fetch the student's behavioral data across the classes taught by this teacher.
+
+    STEP 2 — INTERPRET BEHAVIORS:
+    Use this framework to understand the data (do NOT repeat these labels verbatim to the teacher):
+    - optimal: Student answered correctly and quickly — they have mastered this topic.
+    - methodical: Student answered correctly but slowly — they understand but are still building confidence.
+    - struggling: Student answered slowly AND incorrectly — they are genuinely stuck on this topic. This is a red flag.
+    - reckless: Student answered quickly BUT incorrectly — they are guessing or rushing. This needs attention.
+    - skipped: Student skipped this question.
+
+    STEP 3 — WRITE YOUR RESPONSE:
+    Write 2-3 professional, conversational paragraphs directly to the teacher. Your response MUST:
+    - Briefly summarize the student's overall accuracy and pacing.
+    - Compare their performance across different classes if applicable.
+    - Specifically name the topics they are struggling with or being reckless in, so the teacher knows what to review with them.
+    - Briefly mention a topic or two they have mastered.
+
+    ABSOLUTE FORMAT RULES — NEVER BREAK THESE:
+    - NO markdown tables whatsoever.
+    - NO raw number counts (no "14 optimal", no "8 reckless", no "Total Attempts: 2").
+    - NO bullet-point lists of behaviors or metrics.
+    - ONLY warm, flowing prose paragraphs.
+    """
+
+@mcp.prompt()
+def draft_quiz(teacher_id: str, user_query: str) -> str:
     """Prompt template to generate a new quiz."""
     return f"""
     You are an expert curriculum designer.
-    First, read the 'docs://quiz_guidelines' resource.
-    Then, use the 'teacher_generate_quiz_draft' tool to get the JSON schema requirements.
-    Finally, generate {num_questions} high-quality questions for the topics: {topics}.
-    Format your response strictly as the required JSON array so the teacher '{teacher_id}' can review and post it to class '{class_id}'.
+    The user asked: "{user_query}"
+    Internal Context: The user's teacher_id is '{teacher_id}'. Do not repeat this to the user.
+    
+    STRICT QUIZ WORKFLOW RULE:
+    Step 1: First, read the 'docs://quiz_guidelines' resource.
+    Step 2: If the user hasn't selected a class, YOU MUST explicitly call the tool 'teacher_request_class_selection' to pause and wait for them to select a class in the UI. Do not ask them in conversational text.
+    Step 3: If the user HAS selected a class, call 'teacher_get_class_topics' to get the valid topics for that class.
+    Step 4: Call 'teacher_generate_quiz_draft' to get the JSON schema requirements and then call 'teacher_spawn_quiz_ui'.
+    Do NOT reduce the number of questions the teacher asked for.
     """
 
 # --- STUDENT TOOLS ---
@@ -102,6 +193,42 @@ def student_list_classes(student_id: str) -> str:
         """, student_id=student_id)
         classes = [dict(record) for record in result]
         return json.dumps({"classes": classes})
+
+@mcp.tool()
+def student_get_material(student_id: str, class_id: str, topic_name: str) -> str:
+    """Fetches uploaded study material chunks for a specific topic in a class the student is enrolled in.
+    Use this tool when the student wants to learn about, understand, or get an explanation of a topic.
+    ONLY use content from the returned chunks — do not supplement with outside knowledge.
+    """
+    with get_session() as session:
+        # Verify student is enrolled
+        enroll_check = session.run("""
+            MATCH (s:Student {userid: $student_id})-[:ENROLLED_IN]->(c:Class {classid: $class_id})
+            RETURN c.classid AS class_id
+        """, student_id=student_id, class_id=class_id)
+        if not enroll_check.single():
+            return json.dumps({"status": "error", "message": "Student is not enrolled in this class."})
+
+        result = session.run("""
+            MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(sub:Subject)
+            MATCH (t:Topic {name: $topic_name})-[:PART_OF]->(sub)
+            MATCH (ch:Chunk)-[:RELATES_TO]->(t)
+            MATCH (ch)-[:PART_OF]->(d:Document)-[:UPLOADED_TO]->(c)
+            RETURN ch.text AS text, d.filename AS source, ch.index AS idx
+            ORDER BY ch.index
+        """, class_id=class_id, topic_name=topic_name)
+
+        chunks = []
+        for r in result:
+            chunks.append({"text": r["text"], "source": r["source"]})
+
+        if not chunks:
+            return json.dumps({
+                "status": "no material",
+                "message": f"No uploaded study material found for '{topic_name}' in this class. The teacher may not have uploaded notes for this topic yet."
+            })
+
+        return json.dumps({"topic": topic_name, "chunk_count": len(chunks), "chunks": chunks})
 
 @mcp.tool()
 @cached(ttl_seconds=300) # L1+L2 caching for analytical queries
@@ -166,6 +293,73 @@ def teacher_list_classes(teacher_id: str) -> str:
 
 @mcp.tool()
 @cached(ttl_seconds=300) # L1+L2 caching
+def teacher_get_student_performance(teacher_id: str, student_name: str) -> str:
+    """Returns a specific student's overall performance, behavior, and accuracy across classes taught by the teacher."""
+    with get_session() as session:
+        # Find student by name (case-insensitive) who is enrolled in a class taught by the teacher
+        student_res = session.run("""
+            MATCH (t:Teacher {userid: $teacher_id})-[:TEACHES]->(c:Class)<-[:ENROLLED_IN]-(s:Student)
+            WHERE toLower(s.name) = toLower($student_name)
+            RETURN s.userid AS student_id, s.name AS name, c.classid AS class_id
+        """, teacher_id=teacher_id, student_name=student_name.strip())
+        
+        records = [dict(r) for r in student_res]
+        if not records:
+            return json.dumps({"status": "not found", "message": f"No student named '{student_name}' found in any of your classes."})
+        
+        student_id = records[0]["student_id"]
+        
+        result = session.run("""
+            MATCH (s:Student {userid: $student_id})-[:ENROLLED_IN]->(c:Class)<-[:TEACHES]-(t:Teacher {userid: $teacher_id})
+            MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
+            MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)-[:FOR_QUESTION]->(qst:Question)-[:PART_OF]->(topic:Topic)
+            RETURN 
+                c.classid AS class_id,
+                count(qr) AS total_questions,
+                avg(qr.time_taken) AS avg_time,
+                sum(CASE WHEN qr.is_correct THEN 1 ELSE 0 END) AS total_correct,
+                count(DISTINCT a) AS total_attempts,
+                collect({behavior: qr.behavior, topic: topic.name}) AS responses
+        """, student_id=student_id, teacher_id=teacher_id)
+        
+        data = {}
+        for r in result:
+            cid = r["class_id"]
+            total_q = r["total_questions"]
+            if total_q == 0:
+                continue
+                
+            behaviors = {}
+            for resp in r["responses"]:
+                b = resp["behavior"]
+                tname = resp["topic"]
+                if b not in behaviors:
+                    behaviors[b] = {"count": 0, "topics": set()}
+                behaviors[b]["count"] += 1
+                behaviors[b]["topics"].add(tname)
+                
+            for b in behaviors:
+                behaviors[b]["topics"] = list(behaviors[b]["topics"])
+                
+            data[cid] = {
+                "summary": {
+                    "total_attempts": r["total_attempts"],
+                    "avg_time_per_question": round(r["avg_time"], 1) if r["avg_time"] else 0,
+                    "accuracy_percentage": round((r["total_correct"] / total_q) * 100, 1) if total_q else 0
+                },
+                "behavioral_analysis": behaviors
+            }
+            
+        if not data:
+             return json.dumps({"status": "no data", "message": f"Student '{records[0]['name']}' found, but they haven't taken any quizzes in your classes yet."})
+             
+        return json.dumps({
+            "student_name": records[0]["name"],
+            "performance_by_class": data
+        })
+
+@mcp.tool()
+@cached(ttl_seconds=300) # L1+L2 caching
 def teacher_get_class_performance(teacher_id: str, class_id: str) -> str:
     """Returns the aggregated performance for all students in a class."""
     with get_session() as session:
@@ -210,19 +404,49 @@ def teacher_get_class_topics(teacher_id: str, class_id: str) -> str:
 @mcp.tool()
 def teacher_generate_quiz_draft(teacher_id: str, class_id: str, topics: str, num_questions: int) -> str:
     """Provides a structural schema to generate a quiz. (LLM should use this to format its output)."""
+    rag_context = ""
+    with get_session() as session:
+        topic_list = [t.strip() for t in topics.split(",")]
+        res = session.run("""
+            MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(sub:Subject)<-[:PART_OF]-(t:Topic)
+            WHERE t.name IN $topic_list
+            MATCH (t)<-[:RELATES_TO]-(ch:Chunk)
+            RETURN t.name AS topic, ch.text AS text
+            LIMIT 20
+        """, class_id=class_id, topic_list=topic_list)
+        
+        chunks = {}
+        for r in res:
+            t_name = r["topic"]
+            if t_name not in chunks:
+                chunks[t_name] = []
+            chunks[t_name].append(r["text"])
+            
+        if chunks:
+            rag_context = "CRITICAL: You MUST use the following course material chunks to generate the questions:\n"
+            for t_name, texts in chunks.items():
+                rag_context += f"--- TOPIC: {t_name} ---\n"
+                for text in texts:
+                    rag_context += f"{text}\n\n"
+                    
+    instructions = (
+        f"Generate a JSON array of EXACTLY {num_questions} questions covering topics: {topics}. "
+        f"You MUST generate all {num_questions} questions — do not generate fewer. "
+        f"Distribute difficulties: roughly 40% easy, 40% medium, 20% hard. "
+        f"Mix question types: at least 80% MCQ (4 options each) and up to 20% short_answer. "
+        f"Each question MUST have: 'text' (string), 'options' (array of exactly 4 strings, required for MCQ), "
+        f"'correct_answer' (exact match from options for MCQ, or a short string for short_answer), "
+        f"'expected_time_seconds' (integer, 30-120), 'topic' (string matching an existing topic name), "
+        f"'question_type' (either 'MCQ' or 'short_answer'), 'difficulty' (either 'easy', 'medium', or 'hard'). "
+        f"Spread questions evenly across all provided topics."
+    )
+    
+    if rag_context:
+        instructions += f"\n\n{rag_context}"
+        
     return json.dumps({
         "status": "success",
-        "instructions": (
-            f"Generate a JSON array of EXACTLY {num_questions} questions covering topics: {topics}. "
-            f"You MUST generate all {num_questions} questions — do not generate fewer. "
-            f"Distribute difficulties: roughly 40% easy, 40% medium, 20% hard. "
-            f"Mix question types: at least 80% MCQ (4 options each) and up to 20% short_answer. "
-            f"Each question MUST have: 'text' (string), 'options' (array of exactly 4 strings, required for MCQ), "
-            f"'correct_answer' (exact match from options for MCQ, or a short string for short_answer), "
-            f"'expected_time_seconds' (integer, 30-120), 'topic' (string matching an existing topic name), "
-            f"'question_type' (either 'MCQ' or 'short_answer'), 'difficulty' (either 'easy', 'medium', or 'hard'). "
-            f"Spread questions evenly across all provided topics."
-        )
+        "instructions": instructions
     })
 
 @mcp.tool()

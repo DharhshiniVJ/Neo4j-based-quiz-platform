@@ -95,6 +95,9 @@ export default function MyClasses({ student, onSelectClass, onLogout }) {
               style={{ cursor: "pointer", borderLeft: `8px solid ${stripColor}` }}
             >
               <h2 style={{ margin: "0 0 12px", fontSize: "28px", textTransform: "uppercase" }}>{c.subject}</h2>
+              <div style={{ marginBottom: "12px", fontSize: "16px", fontWeight: "600", color: "#475569" }}>
+                Teacher: {c.teacher_name || "Unknown"}
+              </div>
               <div className="brutal-badge" style={{ background: stripColor, color: "#fff" }}>Class {c.class_id}</div>
             </div>
           );

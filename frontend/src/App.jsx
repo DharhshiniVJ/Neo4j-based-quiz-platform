@@ -20,6 +20,7 @@ function parseJwt(token) {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [isQuizActive, setIsQuizActive] = useState(false);
 
   useEffect(() => {
     const handleLogoutEvent = () => {
@@ -45,6 +46,7 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     clearToken();
+    setIsQuizActive(false);
   };
 
   const handleLogin = (userData) => {
@@ -59,15 +61,20 @@ export default function App() {
     return (
       <>
         <TeacherDashboard teacher={user} onLogout={handleLogout} />
-        <ChatbotWidget role={user.role} />
+        <ChatbotWidget role={user.role} isQuizActive={false} />
       </>
     );
   }
 
   return (
     <>
-      <StudentDashboard student={user} onLogout={handleLogout} />
-      <ChatbotWidget role={user.role} />
+      <StudentDashboard
+        student={user}
+        onLogout={handleLogout}
+        onQuizStart={() => setIsQuizActive(true)}
+        onQuizEnd={() => setIsQuizActive(false)}
+      />
+      <ChatbotWidget role={user.role} isQuizActive={isQuizActive} />
     </>
   );
 }

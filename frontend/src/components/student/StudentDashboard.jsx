@@ -4,7 +4,7 @@ import ClassQuizzes from "./ClassQuizzes";
 import TakeQuiz from "./TakeQuiz";
 import AttemptDetail from "../AttemptDetail";
 
-export default function StudentDashboard({ student, onLogout }) {
+export default function StudentDashboard({ student, onLogout, onQuizStart, onQuizEnd }) {
   const [selectedClass, setSelectedClass] = useState(null);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [reviewAttempt, setReviewAttempt] = useState(null);
@@ -25,6 +25,7 @@ export default function StudentDashboard({ student, onLogout }) {
   const handleTakeQuiz = (quiz) => {
     setSelectedQuiz(quiz);
     setMode("take");
+    onQuizStart && onQuizStart();
   };
 
   const handleReviewAttempt = (attempt) => {
@@ -36,7 +37,9 @@ export default function StudentDashboard({ student, onLogout }) {
     // After submitting, go back to class quizzes so they can see it under Completed
     setSelectedQuiz(null);
     setMode("quizzes");
+    onQuizEnd && onQuizEnd();
   };
+
 
   if (mode === "review") {
     return (
@@ -55,7 +58,7 @@ export default function StudentDashboard({ student, onLogout }) {
         student={student}
         quiz={selectedQuiz}
         onDone={handleQuizDone}
-        onBack={() => setMode("quizzes")}
+        onBack={() => { setMode("quizzes"); onQuizEnd && onQuizEnd(); }}
       />
     );
   }

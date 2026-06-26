@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { getClassQuizzes, getStudentAttempts } from "../../api";
+import { getClassQuizzes, getStudentAttempts, getClassMaterials, downloadClassMaterial } from "../../api";
 
 export default function ClassQuizzes({ student, selectedClass, onTakeQuiz, onReviewAttempt, onBack }) {
   const [quizzes, setQuizzes] = useState([]);
   const [attempts, setAttempts] = useState([]);
+  const [materials, setMaterials] = useState([]);
 
   useEffect(() => {
     getClassQuizzes(selectedClass.class_id).then(setQuizzes);
     getStudentAttempts(student.userid).then(setAttempts);
+    getClassMaterials(selectedClass.class_id).then(setMaterials).catch(() => setMaterials([]));
   }, [selectedClass, student]);
 
   const attemptedQuizIds = new Set(attempts.map((a) => a.quiz_id));
@@ -25,6 +27,43 @@ export default function ClassQuizzes({ student, selectedClass, onTakeQuiz, onRev
         <h1 style={{ margin: "0 0 8px", fontSize: "36px", textTransform: "uppercase" }}>{selectedClass.subject}</h1>
         <div className="brutal-badge" style={{ background: "var(--white)", fontSize: "14px" }}>Class {selectedClass.class_id}</div>
       </div>
+
+      {/* Study Materials */}
+      {materials.length > 0 && (
+        <div style={{ marginBottom: "48px" }}>
+          <h2 style={{ fontSize: "24px", textTransform: "uppercase", marginBottom: "24px", paddingBottom: "12px", borderBottom: "4px solid var(--border)" }}>
+             Study Materials
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {materials.map((m) => (
+              <div
+                key={m.doc_id}
+                className="brutal-card"
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px", borderLeft: "8px solid var(--secondary)" }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <span style={{ fontSize: "24px" }}></span>
+                  <div>
+                    <div style={{ fontWeight: "700", fontSize: "16px" }}>{m.filename}</div>
+                    <div style={{ fontSize: "12px", color: "#64748b" }}>Uploaded {new Date(m.uploaded_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+                {m.downloadable ? (
+                  <button
+                    className="brutal-btn brutal-btn-accent"
+                    style={{ padding: "8px 16px", fontSize: "13px" }}
+                    onClick={() => downloadClassMaterial(selectedClass.class_id, m.doc_id)}
+                  >
+                    ⬇ Download
+                  </button>
+                ) : (
+                  <span style={{ fontSize: "13px", color: "#94a3b8", fontWeight: "600" }}>Not available</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", alignItems: "start" }}>
         <div>

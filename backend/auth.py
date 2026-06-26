@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from dotenv import load_dotenv
@@ -36,6 +36,11 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> dict:
     return decode_token(credentials.credentials)
+
+
+def get_download_user(token: str = Query(...)) -> dict:
+    """Auth dependency for file download endpoints — reads token from ?token= query param."""
+    return decode_token(token)
 
 
 # ── Role guards ────────────────────────────────────────────────────────────────

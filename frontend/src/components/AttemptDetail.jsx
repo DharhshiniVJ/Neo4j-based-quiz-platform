@@ -3,10 +3,10 @@ import { getTopicScores, getBehavioral } from "../api";
 import BehaviorQuadrantChart from "./BehaviorQuadrantChart";
 
 const BEHAVIOR_LABELS = {
-  optimal: "Optimal (Fast & Right)",
-  methodical: "Methodical (Slow & Right)",
-  reckless: "Reckless (Fast & Wrong)",
-  struggling: "Struggling (Slow & Wrong)",
+  optimal: "Optimal",
+  methodical: "Methodical",
+  reckless: "Reckless",
+  struggling: "Struggling",
   skipped: "Skipped",
 };
 

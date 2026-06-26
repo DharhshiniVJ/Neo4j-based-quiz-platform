@@ -7,3 +7,5 @@ python-jose
 redis
 mcp
 cerebras-cloud-sdk
+python-multipart
+pypdf

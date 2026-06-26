@@ -74,7 +74,7 @@ export default function ClassPerformance({ selectedClass, onBack }) {
             <div>
               <div style={{ fontWeight: "700", textTransform: "uppercase", marginBottom: "4px" }}>Struggling</div>
               <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px", lineHeight: "1.4" }}>
-                Topics under struggling suggest the class is spending a lot of time but still arriving at the wrong answer.
+                The class is trying hard but getting stuck. Students are spending a lot of time on these topics but still getting them wrong.
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {getRankedTopics('struggling').slice(0, 5).map(t => <span key={t} className="brutal-badge" style={{ fontSize: "12px" }}>{t}</span>)}
@@ -90,7 +90,7 @@ export default function ClassPerformance({ selectedClass, onBack }) {
             <div>
               <div style={{ fontWeight: "700", textTransform: "uppercase", marginBottom: "4px" }}>Reckless</div>
               <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px", lineHeight: "1.4" }}>
-                Topics under reckless suggest the class is rushing through questions and answering incorrectly.
+                The class is rushing through these topics. Students are answering very quickly but getting them wrong, which might indicate guessing.
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {getRankedTopics('reckless').slice(0, 5).map(t => <span key={t} className="brutal-badge" style={{ fontSize: "12px" }}>{t}</span>)}
@@ -109,7 +109,7 @@ export default function ClassPerformance({ selectedClass, onBack }) {
             <div>
               <div style={{ fontWeight: "700", textTransform: "uppercase", marginBottom: "4px" }}>Methodical</div>
               <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px", lineHeight: "1.4" }}>
-                Topics under methodical suggest that in these topics the class takes a little bit of time but arrives at the correct answer.
+                The class seems to understand and is careful. Students take their time to think through the problem and get it right.
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {getRankedTopics('methodical').slice(0, 5).map(t => <span key={t} className="brutal-badge" style={{ fontSize: "12px" }}>{t}</span>)}
@@ -125,7 +125,7 @@ export default function ClassPerformance({ selectedClass, onBack }) {
             <div>
               <div style={{ fontWeight: "700", textTransform: "uppercase", marginBottom: "4px" }}>Optimal</div>
               <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px", lineHeight: "1.4" }}>
-                Topics under optimal suggest the class is efficiently and quickly arriving at the correct answers.
+                The class has mastered these topics. Students are answering quickly and accurately, showing true fluency.
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {getRankedTopics('optimal').slice(0, 5).map(t => <span key={t} className="brutal-badge" style={{ fontSize: "12px" }}>{t}</span>)}

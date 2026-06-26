@@ -80,10 +80,10 @@ export default function QuizReport({ selectedClass, selectedQuiz, onSelectAttemp
                 <div className="brutal-card">
                   <h3 style={{ margin: "0 0 16px", fontSize: "20px", textTransform: "uppercase" }}>Behavioral Focus Areas</h3>
                   {[
-                    { label: "Struggling", description: "Students take a long time but still get the answer wrong.", key: "struggling_topics", accent: "var(--primary)" },
-                    { label: "Reckless", description: "Students answer very quickly but often get it wrong.", key: "reckless_topics", accent: "var(--accent)" },
-                    { label: "Methodical", description: "Students take their time and carefully arrive at the correct answer.", key: "methodical_topics", accent: "var(--secondary)" },
-                    { label: "Optimal", description: "Students quickly and accurately arrive at the correct answer.", key: "optimal_topics", accent: "var(--secondary)" },
+                    { label: "Struggling", description: "Students are trying hard but getting stuck. They are spending a lot of time on these topics but still getting them wrong.", key: "struggling_topics", accent: "var(--primary)" },
+                    { label: "Reckless", description: "Students are rushing through these topics. They are answering very quickly but getting them wrong, which might indicate guessing.", key: "reckless_topics", accent: "var(--accent)" },
+                    { label: "Methodical", description: "Students seem to understand and are careful. They take their time to think through the problem and get it right.", key: "methodical_topics", accent: "var(--secondary)" },
+                    { label: "Optimal", description: "Students have mastered these topics. They are answering quickly and accurately, showing true fluency.", key: "optimal_topics", accent: "var(--secondary)" },
                   ].map(({ label, description, key, accent }, i, arr) => (
                     <div key={key} style={{ marginBottom: i < arr.length - 1 ? "12px" : 0, paddingBottom: i < arr.length - 1 ? "12px" : 0, borderBottom: i < arr.length - 1 ? "2px solid var(--border)" : "none" }}>
                       <strong style={{ display: "block", marginBottom: "4px", color: accent, fontSize: "18px" }}>{label}</strong>

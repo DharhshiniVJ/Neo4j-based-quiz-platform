@@ -1,12 +1,20 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import traceback
 import bcrypt
+import io
+import pypdf
+import os
+import json
+import uuid
+from datetime import datetime
+from cerebras.cloud.sdk import Cerebras
 from db import get_session
 from auth import (
     create_access_token,
     get_current_user,
+    get_download_user,
     require_student,
     require_teacher,
     assert_own_student,
@@ -18,7 +26,24 @@ from mcp_server import mcp
 
 app = FastAPI()
 
+# Uploaded PDF storage directory
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 app.mount("/mcp", mcp.sse_app())
+
+import asyncio
+from mcp_client import mcp_manager
+
+@app.on_event("startup")
+async def startup_event():
+    # Start the persistent MCP connection manager in the background
+    # It will silently retry until the SSE server is fully booted and ready.
+    asyncio.create_task(mcp_manager.start())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await mcp_manager.close()
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -241,7 +266,8 @@ def get_student_classes(student_id: str, current_user: dict = Depends(require_st
     with get_session() as session:
         result = session.run("""
             MATCH (s:Student {userid: $student_id})-[:ENROLLED_IN]->(c:Class)-[:BELONGS_TO]->(sub:Subject)
-            RETURN c.classid AS class_id, sub.name AS subject
+            OPTIONAL MATCH (t:Teacher)-[:TEACHES]->(c)
+            RETURN c.classid AS class_id, sub.name AS subject, t.name AS teacher_name
         """, student_id=student_id)
         return [dict(record) for record in result]
 
@@ -739,6 +765,173 @@ def join_class(payload: ClassJoinIn, current_user: dict = Depends(require_studen
         """, sid=current_user["sub"], code=payload.join_code)
         
         return {"success": True, "class_id": record["cid"]}
+
+def process_pdf_background(class_id: str, doc_id: str, chunks: list):
+    api_key = os.environ.get("CEREBRAS_API_KEY")
+    if not api_key:
+        print("CEREBRAS_API_KEY not set for background task")
+        return
+    client = Cerebras(api_key=api_key)
+
+    with get_session() as session:
+        res = session.run("MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(s:Subject)<-[:PART_OF]-(t:Topic) RETURN t.name AS name", class_id=class_id)
+        existing_topics = [r["name"] for r in res]
+
+        for i, chunk_text in enumerate(chunks):
+            prompt = f"Here is a chunk from a syllabus or textbook. Read it and determine which of the following existing topics it best relates to.\nExisting Topics: {', '.join(existing_topics)}\nYou must strictly map it ONLY to the topics in this list. Do NOT create new topics.\n\nText: {chunk_text}"
+            try:
+                response = client.chat.completions.create(
+                    model="zai-glm-4.7",
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=[{
+                        "type": "function",
+                        "function": {
+                            "name": "system_map_to_topics",
+                            "description": "Save the existing topics that match this text.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "matched_topics": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "The exact topic names from the existing topics list that relate to the text."
+                                    }
+                                },
+                                "required": ["matched_topics"]
+                            }
+                        }
+                    }],
+                    tool_choice={"type": "function", "function": {"name": "system_map_to_topics"}}
+                )
+                
+                tool_call = response.choices[0].message.tool_calls[0]
+                args = json.loads(tool_call.function.arguments)
+                topics_json = args.get("matched_topics", [])
+            except Exception as e:
+                print(f"Error classifying chunk {i}: {e}")
+                topics_json = []
+
+            if not isinstance(topics_json, list):
+                topics_json = []
+
+            chunk_id = f"{doc_id}-chunk-{i}"
+
+            session.run("""
+                MATCH (d:Document {docid: $doc_id})
+                CREATE (ch:Chunk {chunkid: $chunk_id, text: $text, index: $index})
+                CREATE (ch)-[:PART_OF]->(d)
+            """, doc_id=doc_id, chunk_id=chunk_id, text=chunk_text, index=i)
+
+            from mcp_server import system_map_to_topics
+            system_map_to_topics(class_id, chunk_id, topics_json)
+
+@app.post("/classes/{class_id}/upload")
+async def upload_class_material(class_id: str, background_tasks: BackgroundTasks, file: UploadFile = File(...), current_user: dict = Depends(require_teacher)):
+    assert_own_teacher(current_user["sub"], current_user)
+    content = await file.read()
+    try:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(content))
+        text = ""
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {str(e)}")
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
+
+    chunk_size = 1000
+    chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+    
+    doc_id = str(uuid.uuid4())
+    filename = file.filename
+
+    # Save the raw PDF to disk so students can download it
+    safe_filename = f"{doc_id}_{filename}"
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    with get_session() as session:
+        session.run("""
+            MATCH (c:Class {classid: $class_id})
+            CREATE (d:Document {docid: $doc_id, filename: $filename, filepath: $filepath, uploaded_at: datetime()})
+            CREATE (d)-[:UPLOADED_TO]->(c)
+        """, class_id=class_id, doc_id=doc_id, filename=filename, filepath=file_path)
+
+    background_tasks.add_task(process_pdf_background, class_id, doc_id, chunks)
+
+    return {"status": "success", "message": "Document uploaded and is processing in the background."}
+
+@app.get("/classes/{class_id}/materials")
+def get_class_materials(class_id: str, current_user: dict = Depends(get_current_user)):
+    with get_session() as session:
+        res = session.run("""
+            MATCH (d:Document)-[:UPLOADED_TO]->(c:Class {classid: $class_id})
+            RETURN d.docid AS doc_id, d.filename AS filename, d.filepath AS filepath, toString(d.uploaded_at) AS uploaded_at
+            ORDER BY d.uploaded_at DESC
+        """, class_id=class_id)
+        results = []
+        for r in res:
+            item = dict(r)
+            # Only expose downloadable flag, not the raw server path
+            item["downloadable"] = bool(item.get("filepath") and os.path.exists(item["filepath"]))
+            item.pop("filepath", None)
+            results.append(item)
+        return results
+
+@app.get("/classes/{class_id}/materials/{doc_id}/download")
+def download_class_material(class_id: str, doc_id: str, current_user: dict = Depends(get_download_user)):
+    """Allows any authenticated user (teacher or student) enrolled/teaching this class to download a material."""
+    with get_session() as session:
+        res = session.run("""
+            MATCH (d:Document {docid: $doc_id})-[:UPLOADED_TO]->(c:Class {classid: $class_id})
+            RETURN d.filename AS filename, d.filepath AS filepath
+        """, doc_id=doc_id, class_id=class_id)
+        record = res.single()
+        if not record:
+            raise HTTPException(status_code=404, detail="Material not found.")
+        filepath = record["filepath"]
+        if not filepath or not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="File not available for download. It may have been uploaded before download support was added.")
+        return FileResponse(
+            path=filepath,
+            filename=record["filename"],
+            media_type="application/pdf"
+        )
+
+@app.delete("/classes/{class_id}/materials/{doc_id}")
+def delete_class_material(class_id: str, doc_id: str, current_user: dict = Depends(require_teacher)):
+    assert_own_teacher(current_user["sub"], current_user)
+    with get_session() as session:
+        res = session.run("""
+            MATCH (d:Document {docid: $doc_id})-[:UPLOADED_TO]->(c:Class {classid: $class_id})
+            RETURN d.filepath AS filepath
+        """, doc_id=doc_id, class_id=class_id)
+        record = res.single()
+        if not record:
+            raise HTTPException(status_code=404, detail="Document not found or does not belong to this class")
+
+        filepath = record["filepath"]
+
+        # Delete chunk relationships and chunks, then the document node
+        session.run("""
+            MATCH (d:Document {docid: $doc_id})
+            OPTIONAL MATCH (ch:Chunk)-[:PART_OF]->(d)
+            DETACH DELETE ch
+            DETACH DELETE d
+        """, doc_id=doc_id)
+
+    # Remove the file from disk
+    if filepath and os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+        except Exception as e:
+            print(f"[delete_material] Could not remove file {filepath}: {e}")
+
+    return {"status": "success", "message": "Document deleted"}
 
 @app.get("/classes/{class_id}/overall-stats")
 def get_class_overall_stats(class_id: str, current_user: dict = Depends(require_teacher)):

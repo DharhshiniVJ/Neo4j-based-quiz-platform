@@ -95,3 +95,40 @@ export async function sendChatMessage(message, history = []) {
   });
 }
 
+export async function uploadClassMaterial(classId, file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const response = await fetch(`${BASE}/classes/${classId}/upload`, {
+    method: "POST",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData
+  });
+  if (!response.ok) throw new Error("Upload failed");
+  return response.json();
+}
+
+export async function getClassMaterials(classId) {
+  return apiFetch(`/classes/${classId}/materials`);
+}
+
+export async function deleteClassMaterial(classId, docId) {
+  return apiFetch(`/classes/${classId}/materials/${docId}`, {
+    method: "DELETE"
+  });
+}
+
+export function downloadClassMaterial(classId, docId) {
+  const token = getToken();
+  // Trigger browser download via a hidden anchor
+  const url = `${BASE}/classes/${classId}/materials/${docId}/download`;
+  const a = document.createElement("a");
+  a.href = url;
+  a.setAttribute("download", "");
+  // Pass token via query param since anchor tags can't set headers
+  a.href = `${url}?token=${token}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}

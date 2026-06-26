@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage } from '../api';
 
-export default function ChatbotWidget({ role }) {
+export default function ChatbotWidget({ role, isQuizActive }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -30,6 +30,13 @@ export default function ChatbotWidget({ role }) {
       ]);
     }
   }, [role]);
+
+  // Close chat if a quiz starts
+  useEffect(() => {
+    if (isQuizActive) {
+      setIsOpen(false);
+    }
+  }, [isQuizActive]);
 
   // Save to local storage whenever messages change
   useEffect(() => {
@@ -127,6 +134,35 @@ export default function ChatbotWidget({ role }) {
     window.addEventListener("SEND_CHAT_MESSAGE", handleRemoteSend);
     return () => window.removeEventListener("SEND_CHAT_MESSAGE", handleRemoteSend);
   }, [messages, isLoading]);
+
+  if (isQuizActive) {
+    return (
+      <div
+        title="Chat is paused during a quiz. Focus!"
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 9999,
+          borderRadius: '50%',
+          width: '64px',
+          height: '64px',
+          fontSize: '22px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#e2e8f0',
+          border: '3px solid #94a3b8',
+          boxShadow: '4px 4px 0 #94a3b8',
+          cursor: 'not-allowed',
+          color: '#94a3b8',
+          userSelect: 'none',
+        }}
+      >
+        🔒
+      </div>
+    );
+  }
 
   return (
     <>
@@ -236,6 +272,49 @@ export default function ChatbotWidget({ role }) {
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Slash Command Autocomplete Dropdown */}
+          {input.startsWith('/') && (
+            <div style={{
+              position: 'absolute',
+              bottom: '75px',
+              left: '16px',
+              right: '16px',
+              backgroundColor: 'var(--white)',
+              border: '2px solid var(--border)',
+              borderRadius: '8px',
+              boxShadow: '4px 4px 0 var(--border)',
+              zIndex: 10000,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              {(role === 'teacher' ? [
+                { cmd: '/draft_quiz ', desc: 'Draft a new quiz' },
+                { cmd: '/analyze_student ', desc: 'Analyze student performance' }
+              ] : []).filter(c => c.cmd.startsWith(input) && input.length < c.cmd.length).map((c, i) => (
+                <div 
+                  key={i}
+                  onClick={() => setInput(c.cmd)}
+                  style={{
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border)',
+                    backgroundColor: 'var(--bg)',
+                    fontWeight: 'bold',
+                    fontSize: '14px',
+                    display: 'flex',
+                    justifyContent: 'space-between'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--yellow)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg)'}
+                >
+                  <span style={{ color: 'var(--primary)' }}>{c.cmd}</span>
+                  <span style={{ color: 'var(--text)', fontWeight: 'normal', fontSize: '12px' }}>{c.desc}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Input Area */}
           <form 

@@ -17,25 +17,25 @@ const QUADRANT_INFO = {
     label: "Optimal",
     sub: "Fast & Right",
     color: "#22c55e",
-    description: "High accuracy with a fast response time. This pattern points to real mastery and fluency.",
+    description: "You have mastered these topics. You are answering quickly and accurately, showing true fluency.",
   },
   methodical: {
     label: "Methodical",
     sub: "Slow & Right",
     color: "#4f46e5",
-    description: "High accuracy but a slower response time. The learner is reasoning through the problem step by step.",
+    description: "You seem to understand and are careful. You take your time to think through the problem and get it right.",
   },
   reckless: {
     label: "Reckless",
     sub: "Fast & Wrong",
     color: "#f97316",
-    description: "Low accuracy with a fast response time. Usually a sign of guessing or rushing.",
+    description: "You are rushing through these topics. You are answering very quickly but getting them wrong, which might indicate guessing.",
   },
   struggling: {
     label: "Struggling",
     sub: "Slow & Wrong",
     color: "#ef4444",
-    description: "Low accuracy with a slow response time. This usually signals a real gap in foundational understanding.",
+    description: "You are trying hard but getting stuck. You are spending a lot of time on these topics but still getting them wrong.",
   },
 };
 
@@ -228,7 +228,7 @@ export default function BehaviorQuadrantChart({ responses, onSelectBehavior }) {
                 }}
               />
               <strong style={{ fontSize: "14px", textTransform: "uppercase" }}>
-                {info.label} <span style={{ color: "#64748b", fontWeight: 700 }}>({info.sub})</span>
+                {info.label}
               </strong>
             </div>
             <p style={{ margin: 0, fontSize: "13px", color: "var(--text)", fontWeight: "500", lineHeight: 1.5 }}>{info.description}</p>
