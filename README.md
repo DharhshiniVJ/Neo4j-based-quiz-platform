@@ -49,42 +49,45 @@ Unlike most projects that just plug into Claude Desktop, StudyDB implements **bo
 
 ```mermaid
 graph LR
-    %% Define simple styles
-    classDef ui fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff;
-    classDef api fill:#0284c7,stroke:#0369a1,stroke-width:2px,color:#fff;
-    classDef client fill:#10b981,stroke:#047857,stroke-width:2px,color:#fff;
-    classDef server fill:#8b5cf6,stroke:#4c1d95,stroke-width:2px,color:#fff;
-    classDef llm fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#fff;
-    classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#fff;
-    classDef cache fill:#64748b,stroke:#334155,stroke-width:2px,color:#fff;
-
-    %% Nodes
-    UI["Frontend<br/>React / Vite"] ::: ui
-    API["FastAPI<br/>REST Endpoints"] ::: api
+    UI[Frontend: React / Vite]
+    API[FastAPI: REST Endpoints]
     
     subgraph Caching_Layer [Dual-Layer Cache]
-        LRU["L1: In-Memory<br/>LRU Cache"] ::: cache
-        Redis[("L2: Redis<br/>Fallback")] ::: cache
+        LRU[L1: In-Memory LRU Cache]
+        Redis[(L2: Redis Fallback)]
     end
     
-    MCP_Client["MCP Client<br/>Orchestrator"] ::: client
-    MCP_Server["MCP Server<br/>Tool Provider"] ::: server
-    LLM["Cerebras AI<br/>Inference"] ::: llm
-    Neo4j[("Neo4j Backend<br/>Graph Database")] ::: db
+    MCP_Client[MCP Client Orchestrator]
+    MCP_Server[MCP Server Tool Provider]
+    LLM[Cerebras AI Inference]
+    Neo4j[(Neo4j Backend Graph Database)]
 
-    %% Connections
     UI <-->|HTTP / REST| API
     
-    %% Dual Caching Logic
     API <-->|1. Fast hit| LRU
     API <-->|2. Fallback miss| Redis
     API <-->|3. Hard miss| Neo4j
     
-    %% AI Flow
     API <-->|Route Chat| MCP_Client
     MCP_Client <-->|Server-Sent Events| MCP_Server
     MCP_Client <-->|Prompts & Tool Calls| LLM
     MCP_Server <-->|Cypher Queries| Neo4j
+
+    classDef ui fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff
+    classDef api fill:#0284c7,stroke:#0369a1,stroke-width:2px,color:#fff
+    classDef client fill:#10b981,stroke:#047857,stroke-width:2px,color:#fff
+    classDef server fill:#8b5cf6,stroke:#4c1d95,stroke-width:2px,color:#fff
+    classDef llm fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#fff
+    classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#fff
+    classDef cache fill:#64748b,stroke:#334155,stroke-width:2px,color:#fff
+    
+    class UI ui
+    class API api
+    class MCP_Client client
+    class MCP_Server server
+    class LLM llm
+    class Neo4j db
+    class LRU,Redis cache
 ```
 
 ---
