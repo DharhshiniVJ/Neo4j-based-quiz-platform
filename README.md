@@ -56,7 +56,7 @@ graph LR
     classDef server fill:#8b5cf6,stroke:#4c1d95,stroke-width:2px,color:#fff;
     classDef llm fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#fff;
     classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#fff;
-    class/cache fill:#64748b,stroke:#334155,stroke-width:2px,color:#fff;
+    classDef cache fill:#64748b,stroke:#334155,stroke-width:2px,color:#fff;
 
     %% Nodes
     UI[Frontend\nReact / Vite] ::: ui
