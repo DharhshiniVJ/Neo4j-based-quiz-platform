@@ -72,7 +72,7 @@ graph LR
     API <-->|Route Chat| MCP_Client
     MCP_Client <-->|Server-Sent Events| MCP_Server
     MCP_Client <-->|Prompts & Tool Calls| LLM
-    MCP_Server <-->|@mcp.cached Tool Calls| LRU
+    MCP_Server <-->|Cached Tool Calls| LRU
     MCP_Server <-->|Cypher Queries| Neo4j
 
     classDef ui fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff
