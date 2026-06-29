@@ -184,7 +184,7 @@ Since the tech world is moving towards an AI-Harness-based development environme
 As the tech world moves toward AI-assisted engineering and "Harness" environments, repositories must be optimized not just for human developers, but for AI agents. We have already implemented `.agents/skills/studydb_neo4j/SKILL.md` in this repository. This declarative skill file acts as the project's "brain", injecting our Neo4j schema, Behavioral Matrix logic, and architectural rules directly into the context window of any AI coding assistant (like Claude or Gemini) working on the codebase. This guarantees that future AI-driven development strictly adheres to our design patterns.
 
 ### 2. Full Implementation of Advanced MCP Specs
-While the current setup implements the "Big 3" of MCP (Tools, Prompts, Resources), the harness will integrate the remaining advanced spec features:
+While the current setup implements the "Big 3" of MCP (Tools, Prompts, Resources), I wish to integrate the remaining advanced spec features:
 - **Resource Templates:** Creating dynamic URI resources (e.g., `study-material://{class}/{topic}`) for native, seamless LLM reading without explicit tool calls.
 - **Server-Initiated Notifications (Pub/Sub):** Allowing the MCP Server to actively push state changes to the Client. For example, when a new PDF finishes chunking in the background, the server will notify the LLM to proactively pop up in the chat and say, *"Your teacher just uploaded new notes, want a summary?"*
 - **Client Sampling:** Allowing the backend MCP Server to request the Client's LLM to generate completions mid-workflow (e.g., to summarize a file *before* database insertion).
