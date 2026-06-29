@@ -108,6 +108,8 @@ async def run_chat(user_id: str, role: str, prompt: str, history: list = []) -> 
         user_query = parts[1] if len(parts) > 1 else ""
         if command in ["draft_quiz", "analyze_student"]:
             args_dict = {"teacher_id": user_id, "user_query": user_query}
+        elif command == "explain":
+            args_dict = {"student_id": user_id, "user_query": user_query}
 
     # 3. Fetch the Prompt from the MCP Server
     try:

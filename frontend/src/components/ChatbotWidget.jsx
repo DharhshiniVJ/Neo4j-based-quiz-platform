@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage } from '../api';
 
-export default function ChatbotWidget({ role, isQuizActive }) {
+export default function ChatbotWidget({ role, userId, isQuizActive }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [allTopics, setAllTopics] = useState([]);
+  const [filteredTopics, setFilteredTopics] = useState([]);
   const messagesEndRef = useRef(null);
 
   const getWelcomeMessage = () => {
@@ -14,6 +16,26 @@ export default function ChatbotWidget({ role, isQuizActive }) {
     }
     return "Hi! I'm your AI Assistant. Ask me to list your enrolled classes or show your detailed behavioral performance report!";
   };
+
+  useEffect(() => {
+    if (role === 'student' && userId) {
+      import('../api').then(({ getStudentClasses, getClassTopics }) => {
+        getStudentClasses(userId).then(res => {
+          const classes = res.classes || [];
+          const promises = classes.map(c => 
+            getClassTopics(c.class_id).then(topics => 
+              topics.map(t => ({ ...t, class_id: c.class_id, subject: c.subject }))
+            )
+          );
+          Promise.all(promises).then(results => {
+            const flatTopics = results.flat();
+            setAllTopics(flatTopics);
+            setFilteredTopics(flatTopics.slice(0, 5));
+          }).catch(console.error);
+        }).catch(console.error);
+      });
+    }
+  }, [role, userId]);
 
   // Load chat history on mount
   useEffect(() => {
@@ -93,10 +115,25 @@ export default function ChatbotWidget({ role, isQuizActive }) {
     }
   };
 
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    
+    if (role === 'student' && val.startsWith('/explain')) {
+      const query = val.replace('/explain', '').trim().toLowerCase();
+      if (query) {
+        setFilteredTopics(allTopics.filter(t => t.name.toLowerCase().includes(query)));
+      } else {
+        setFilteredTopics(allTopics.slice(0, 5));
+      }
+    }
+  };
+
   const handleSend = (e) => {
     e.preventDefault();
     const userMsg = input.trim();
     setInput('');
+    if (role === 'student') setFilteredTopics(allTopics.slice(0, 5));
     sendMessage(userMsg);
   };
 
@@ -289,10 +326,10 @@ export default function ChatbotWidget({ role, isQuizActive }) {
               display: 'flex',
               flexDirection: 'column'
             }}>
-              {(role === 'teacher' ? [
+              {role === 'teacher' && [
                 { cmd: '/draft_quiz ', desc: 'Draft a new quiz' },
                 { cmd: '/analyze_student ', desc: 'Analyze student performance' }
-              ] : []).filter(c => c.cmd.startsWith(input) && input.length < c.cmd.length).map((c, i) => (
+              ].filter(c => c.cmd.startsWith(input) && input.length < c.cmd.length).map((c, i) => (
                 <div 
                   key={i}
                   onClick={() => setInput(c.cmd)}
@@ -313,6 +350,46 @@ export default function ChatbotWidget({ role, isQuizActive }) {
                   <span style={{ color: 'var(--text)', fontWeight: 'normal', fontSize: '12px' }}>{c.desc}</span>
                 </div>
               ))}
+              {role === 'student' && (
+                input === '/' ? (
+                  <div 
+                    onClick={() => { setInput('/explain '); document.querySelector('#chat-input').focus(); }}
+                    style={{
+                      padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                      backgroundColor: 'var(--bg)', fontWeight: 'bold', fontSize: '14px',
+                      display: 'flex', justifyContent: 'space-between'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--yellow)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg)'}
+                  >
+                    <span style={{ color: 'var(--primary)' }}>/explain</span>
+                    <span style={{ color: 'var(--text)', fontWeight: 'normal', fontSize: '12px' }}>Explain a topic using notes</span>
+                  </div>
+                ) : input.startsWith('/explain') ? (
+                  filteredTopics.length > 0 ? (
+                    filteredTopics.map((t, i) => (
+                      <div 
+                        key={i}
+                        onClick={() => { setInput(`/explain ${t.name}`); document.querySelector('#chat-input').focus(); }}
+                        style={{
+                          padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                          backgroundColor: 'var(--bg)', fontWeight: 'bold', fontSize: '14px',
+                          display: 'flex', justifyContent: 'space-between'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--yellow)'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg)'}
+                      >
+                        <span style={{ color: 'var(--primary)' }}>{t.name}</span>
+                        <span style={{ color: 'var(--text)', fontWeight: 'normal', fontSize: '12px' }}>{t.subject}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: '10px 12px', fontSize: '14px', color: 'var(--text)' }}>
+                      No matching topics found.
+                    </div>
+                  )
+                ) : null
+              )}
             </div>
           )}
 
@@ -328,12 +405,13 @@ export default function ChatbotWidget({ role, isQuizActive }) {
             }}
           >
             <input 
+              id="chat-input"
               type="text" 
               className="brutal-input"
               style={{ flex: 1, padding: '8px 12px' }}
               placeholder="Ask me anything..." 
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               disabled={isLoading}
             />
             <button 

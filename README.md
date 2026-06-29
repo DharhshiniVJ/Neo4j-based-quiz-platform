@@ -1,222 +1,145 @@
-# StudyDB: MCP-Powered Cognitive Assessment Platform
+# StudyDB — AI-Powered Adaptive Quiz Platform
 
-StudyDB is an intelligent educational platform that uses a Neo4j graph database, an LLM-powered Model Context Protocol (MCP) Assistant, and a React frontend to analyze student performance.
+StudyDB is a full-stack, AI-driven educational platform that goes beyond standard testing. It uses a proprietary **Behavioral Evaluation Matrix** to analyze student performance at the millisecond level, and leverages **GraphRAG** via the **Model Context Protocol (MCP)** to provide context-aware, curriculum-grounded AI tutoring.
 
-Rather than just grading students based on right or wrong answers, StudyDB implements a **Cognitive Assessment Framework** that categorizes how a student solves problems based on their *behavior*.
+## 🚀 Key Features
+
+### 1. Proprietary Behavioral Matrix
+Instead of just scoring students as "Right" or "Wrong", StudyDB categorizes real-time student performance into four cognitive profiles based on expected-time baselines:
+- **Optimal:** Fast & Correct (True mastery)
+- **Methodical:** Slow & Correct (Understands, but needs confidence)
+- **Reckless:** Fast & Incorrect (Rushing or guessing)
+- **Struggling:** Slow & Incorrect (Deep knowledge gap)
+
+### 2. GraphRAG Architecture
+StudyDB bypasses the hallucinations of standard vector RAG by using an LLM at ingestion time to firmly attach content to a structured taxonomy in a graph database.
+- Teachers upload PDF materials.
+- The backend chunks the PDFs and uses Cerebras AI to semantically link content directly to curriculum `Topic` nodes in Neo4j.
+- When a student asks a question, the AI retrieves *only* chunks that are explicitly linked to the relevant graph node, ensuring 100% curriculum-grounded answers.
+
+### 3. Custom MCP Server & Client Architecture
+Unlike most projects that just plug into Claude Desktop, StudyDB implements **both sides** of Anthropic's Model Context Protocol (MCP) from scratch:
+- **MCP Server:** Exposes backend capabilities as standard MCP Tools, Prompts, and Resources.
+- **MCP Client (`mcp_client.py`):** A custom Python SSE client that orchestrates the multi-step reasoning loop between the Cerebras LLM and the MCP Server.
+- **Tools (Executable Actions):** The LLM can dynamically call tools to fetch student performance (`student_get_performance`), retrieve GraphRAG materials (`student_get_material`), or draft new quizzes (`teacher_generate_quiz_draft`).
+- **Prompts (Workflows):** Strict, multi-step prompt templates (e.g., `/explain`, `/draft_quiz`) force the AI into structured behaviors, effectively acting as agentic state machines.
+- **Resources (Context):** The AI is given explicit, read-only context boundaries (e.g., `db://schema`, `docs://quiz_guidelines`) to prevent hallucinations.
+- **Client-Side Interception:** The custom MCP Client intercepts specific tool calls before they hit the LLM to trigger frontend React state changes (like popping open a quiz creation modal).
+
+### 4. Full-Stack Orchestration
+- **Frontend:** React (Vite) with custom Brutalist UI components.
+- **Backend:** FastAPI with dual-layer caching (in-memory LRU + Redis design pattern) for sub-second analytical queries.
+- **Database:** Neo4j (Native Graph Database) for complex multi-hop relationship traversals.
+- **Deployment:** Fully containerized with Docker Compose for one-command reproducible deployment.
 
 ---
 
-## 🚀 Setup Instructions
+## 🛠️ Tech Stack
 
-### 1. Prerequisites
-- Python 3.9+
-- Node.js (v18+)
-- Neo4j Desktop (Running locally on `127.0.0.1:7687`)
-- Cerebras API Key (for the LLM Assistant)
+- **Frontend:** React, Vite, CSS (Custom Brutalist Design System)
+- **Backend:** Python, FastAPI, Model Context Protocol (MCP) SDK, PyPDF
+- **AI / LLM:** Cerebras AI (Llama 3 / GLM-4) for ultra-low latency inference
+- **Database:** Neo4j, Cypher Query Language
+- **Auth:** JWT (JSON Web Tokens), bcrypt password hashing
+- **Infrastructure:** Docker, Docker Compose
 
-### 2. Database Setup
-1. Start your Neo4j instance.
-2. The backend is configured to use `neo4j` / `password`. If your credentials differ, update them in `backend/db.py`.
+---
 
-### 3. Backend Setup
-```bash
-cd backend
-python -m venv venv
-# Activate venv: Windows: venv\Scripts\activate | Mac/Linux: source venv/bin/activate
-pip install -r requirements.txt
+## 🏗️ Architecture
 
-# Create a .env file and add your API key:
-echo "CEREBRAS_API_KEY=your_api_key_here" > .env
-
-# Run the FastAPI server (starts on http://localhost:8000)
-uvicorn main:app --reload
+```mermaid
+graph TD
+    UI[React Frontend] <-->|REST API & JWT| API[FastAPI Backend]
+    API <-->|Bolt Protocol| DB[(Neo4j Graph DB)]
+    API <-->|Internal Orchestration| MCP_Client[Custom MCP Client]
+    MCP_Client <-->|Model Context Protocol| MCP_Server[MCP Server]
+    MCP_Client <-->|API| AI[Cerebras AI / LLM]
+    
+    subgraph Data Ingestion
+    PDF[Teacher Uploads PDF] --> Chunk[PDF Chunker]
+    Chunk --> AI_Map[LLM Topic Mapping]
+    AI_Map --> DB
+    end
 ```
 
-### 4. Frontend Setup
-```bash
-cd frontend
-npm install
-# Start the Vite development server (starts on http://localhost:5173)
-npm run dev
+---
+
+## 🚦 Getting Started
+
+### Prerequisites
+- Docker and Docker Compose
+- A Cerebras API Key (Free tier available)
+
+### 1. Environment Setup
+Create a `.env` file in the `backend/` directory:
+```env
+CEREBRAS_API_KEY=your_api_key_here
+JWT_SECRET=your_super_secret_jwt_key
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_HOURS=8
 ```
 
-### 5. Using the App
-1. Open `http://localhost:5173` in your browser.
-2. **Teacher Login**: `holly.flax@school.edu` / `studydb123`
-3. **Student Login**: `jake.peralta@student.edu` / `studydb123`
-4. Click the floating chat button in the bottom right to talk to the MCP Assistant.
+### 2. Start the Stack
+Run the entire platform using Docker Compose:
+```bash
+docker-compose up --build -d
+```
+This starts:
+- **Neo4j Database:** `localhost:7474` (Bolt: 7687)
+- **FastAPI Backend:** `http://localhost:8000`
+- **React Frontend:** `http://localhost:5173`
+
+### 3. Seed the Database
+The application requires initial taxonomy and constraints to function. Run the idempotent seed script to load the base curriculum, sample users, and sample quizzes:
+```bash
+docker exec -it studydb-mcp_backend-1 python seed.py
+```
+
+### 4. Login Credentials
+The seed script creates the following default users (Password for all is `studydb123`):
+- **Teachers:** `holly.flax@school.edu` (Holly Flax), `holt@school.edu` (Holt)
+- **Students:** `jake.peralta@student.edu` (Jake Peralta), `phoebe.buffay@student.edu` (Phoebe Buffay)
 
 ---
 
-# 🏗️ Architecture Deep Dive
+## 🧠 Database Schema & Cypher (Neo4j)
 
-The following sections break down the core engineering and architectural decisions of the platform.
+StudyDB leverages a native graph structure to track relationships between users, curriculum, and performance.
 
-## 1. MCP Layers: Resources, Prompts, and Tools
-
-### Resources (Read-Only Data)
-Resources provide static or semi-static context to the LLM:
-1. **`db://schema`** — Tells the LLM exactly how our Neo4j database is structured (nodes and relationships) so it understands how to query or interpret the data.
-2. **`docs://quiz_guidelines`** — A set of strict rules the LLM must follow when generating a quiz (e.g., formatting, difficulty scaling, JSON structure).
-
-### Prompts (System Instructions)
-Prompts are the predefined personas and instructions that tell the AI how to behave:
-1. **`default_assistant`** — The standard prompt that runs when a user opens the chat widget. It checks if they are a student or teacher and sets the persona.
-2. **`analyze_student`** — Triggered by the `/analyze_student` slash command. Instructs the AI to look up a student's behavioural metrics and write a professional report.
-3. **`draft_quiz`** — Triggered by the `/draft_quiz` slash command. Instructs the AI to act as an instructional designer and build a custom JSON quiz.
-
-### Tools (Executable Functions)
-Tools allow the AI to actively query the database or trigger UI events.
-
-**System tools (hidden from chat)**
-- `system_map_to_topics` — Used silently in the background to map uploaded PDF chunks to the database.
-
-**Student tools**
-- `student_list_classes` — Finds the student's enrolled classes.
-- `student_get_performance` — Retrieves behavioural quadrants (optimal, struggling, etc.) and accuracy.
-- `student_get_material` — Fetches chunks of the teacher's PDFs for the AI to use as a study guide.
-
-**Teacher tools**
-- `teacher_list_classes` — Finds the teacher's active classes.
-- `teacher_get_student_performance` — Pulls data on a specific student across the teacher's classes.
-- `teacher_get_class_performance` — Pulls aggregate data for an entire class.
-- `teacher_get_class_topics` — Lists all syllabus topics in a specific class.
-- `teacher_generate_quiz_draft` — Calls the LLM to generate a structured JSON quiz.
-- `teacher_request_class_selection` — Pops up a UI menu asking the teacher to choose a class.
-- `teacher_spawn_quiz_ui` — Spawns the Quiz Editor modal in the React UI.
-
-### Data Tools vs. UI Tools (Action Interception)
-The platform uses two different types of tools to achieve different goals:
-
-| Feature | Data tools (e.g., `student_get_performance`) | UI tools (e.g., `teacher_spawn_quiz_ui`) |
-| --- | --- | --- |
-| Purpose | To fetch read-only data from Neo4j. | To trigger a visual state change in the React frontend. |
-| Execution | Runs the Python function in `mcp_server.py`. | Intercepted by `mcp_client.py` before execution. |
-| Return value | JSON data from the database. | A UI command payload: `{"_mcp_action": "SPAWN_QUIZ", ...}` |
-| LLM output | The LLM receives the DB data and writes a normal paragraph response. | The LLM is bypassed. The Python client immediately forwards the JSON to React. |
-| Frontend handling | React displays the text in the chat bubble. | React detects `_mcp_action`, parses the payload, and fires a JavaScript event. |
-
-**How "Action Interception" Works:**
-1. **The LLM calls the tool:** The LLM decides it's time to build a quiz, so it asks to call `teacher_spawn_quiz_ui`.
-2. **The client intercepts:** `mcp_client.py` sees the requested tool name and instantly aborts the LLM loop.
-3. **The JSON payload:** It sends a hardcoded JSON string back to the React UI: `{"_mcp_action": "SPAWN_QUIZ", "payload": {...}}`.
-4. **The event trigger:** When `ChatbotWidget.jsx` sees a message starting with `{"_mcp_action"`, it stops it from printing to the screen. Instead, it fires `window.dispatchEvent()`.
-5. **The result:** The Teacher Dashboard catches that event and pops open the Quiz Creator modal.
-
----
-
-## 2. LLM & Cerebras Integration
-
-### The Model & Provider
-- **Provider:** Cerebras Systems
-- **Model used:** `zai-glm-4.7`
-- **Why Cerebras?** Cerebras builds custom AI hardware (the Wafer-Scale Engine). Their cloud inference is orders of magnitude faster than traditional GPU clusters, providing real-time tutoring for students and instant PDF processing for teachers.
-
-### Dependencies & API Usage
-- **Package:** `cerebras-cloud-sdk`
-- **Method A (Asynchronous):** Used in the Chatbot (`backend/mcp_client.py`). We initialize `AsyncCerebras()` to handle high-concurrency websocket connections so the server doesn't freeze.
-- **Method B (Synchronous):** Used in background PDF processing (`backend/main.py`). Since it is in an isolated background thread, it utilizes the synchronous `Cerebras()` client.
-
-### Tool Calling & Structured Outputs
-Instead of asking the LLM to format output as JSON, we pass a strict JSON Schema into the API request using the `tools=` parameter. When the LLM needs data, it interrupts its text generation and returns a `tool_calls` array, forcing our backend to execute Python functions and return the data.
-
----
-
-## 3. Network Architecture: SSE and Persistence
-
-### SSE over HTTP (Not stdio)
-We are using **SSE (Server-Sent Events) over HTTP**, not standard I/O.
-In `backend/main.py`, we mount the MCP server directly inside our existing FastAPI web server:
-`app.mount("/mcp", mcp.sse_app())`
-This eliminates the need to run two separate backend programs, making cloud deployment significantly simpler.
-
-### Persistent Connection (`MCPConnectionManager`)
-Connecting to an SSE endpoint and downloading the tool list takes time. Instead of doing this on every message, we built `MCPConnectionManager`.
-On FastAPI startup, a background task connects to `/mcp/sse`, handshakes, and leaves the connection open using Python's `AsyncExitStack`. When a student asks a question, `run_chat()` uses a pre-warmed connection with zero setup delay.
-
----
-
-## 4. Multi-Layer Caching Architecture
-
-Analytical graph queries in Neo4j are computationally heavy. To prevent the database from recalculating similar results repeatedly, we use a two-tier cache.
-
-### The `@cached` Decorator
-We applied a custom Python decorator (`@cached(ttl_seconds=300)`) to the heaviest MCP tools, caching their results for 5 minutes.
-
-### The L1 / L2 Architecture
-- **Level 1 (In-memory):** A Python dictionary (`L1_CACHE = {}`) in FastAPI RAM. Protected by `threading.Lock()`. Speed: Nanoseconds.
-- **Level 2 (Redis):** A centralized Redis server (port 6379). If a request misses in L1, it checks Redis, returns the data, and copies it back into L1.
-
----
-
-## 5. Neo4j Graph Schema & Cypher Queries
-
-### The Complete Relationship Map
+### Core Schema
 - `(Teacher)-[:TEACHES]->(Class)`
 - `(Student)-[:ENROLLED_IN]->(Class)`
 - `(Class)-[:BELONGS_TO]->(Subject)`
 - `(Topic)-[:PART_OF]->(Subject)`
-- `(Question)-[:PART_OF]->(Topic)`
-- `(Teacher)-[:POSTED]->(Quiz)`
-- `(Quiz)-[:CONTAINS]->(Question)`
 - `(Quiz)-[:POSTED_TO]->(Class)`
-- `(Student)-[:HAS_ATTEMPT]->(Attempt)`
-- `(Attempt)-[:FOR_QUIZ]->(Quiz)`
-- `(Attempt)-[:HAS_RESPONSE]->(QuestionResponse)`
-- `(QuestionResponse)-[:FOR_QUESTION]->(Question)`
-- `(Chunk)-[:PART_OF]->(Document)`
-- `(Document)-[:POSTED_TO]->(Class)`
-- `(Chunk)-[:RELATES_TO]->(Topic)`
+- `(Attempt)-[:HAS_RESPONSE]->(QuestionResponse)-[:FOR_QUESTION]->(Question)`
+- `(Chunk)-[:RELATES_TO]->(Topic)` *(GraphRAG injection point)*
 
-### Pre-Computed Behavioral Rules (The "Skipped" Fix)
-When a student submits a quiz, the backend assigns a `behavior` string to the `QuestionResponse` node.
-**Clarification on "Skipped":** A question is marked as skipped ONLY if the student explicitly clicks the skip button or leaves it completely blank (`status = 'skipped'`). Time does not matter for this calculation!
-1. **Skipped:** No answer provided (`status = 'skipped'`).
-2. **Reckless:** Answered *faster* than expected time AND *Incorrect*.
-3. **Struggling:** Answered *slower* than expected time AND *Incorrect*.
-4. **Methodical:** Answered *slower* than expected time AND *Correct*.
-5. **Optimal:** Answered *faster* than expected time AND *Correct*.
-
-### Major Cypher Queries
-**Fetching a Student's Behavioral Analytics:**
+### Example Cypher: Behavioral Matrix Evaluation
+This query evaluates a student's attempt on a quiz, comparing their time spent against the baseline `expected_time_seconds` to categorize them as Optimal, Methodical, Reckless, or Struggling.
 ```cypher
-MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student {userid: $student_id})
-MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
-MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)-[:FOR_QUESTION]->(qst:Question)-[:PART_OF]->(t:Topic)
-RETURN qr.behavior AS behavior, t.name AS topic, qr.status AS status
+MATCH (a:Attempt {attemptid: $attempt_id})-[:HAS_RESPONSE]->(qr:QuestionResponse)-[:FOR_QUESTION]->(q:Question)
+WITH a, qr, q,
+     qr.is_correct AS correct,
+     qr.time_taken_seconds AS time_taken,
+     q.expected_time_seconds AS expected
+WITH a, qr, q, correct, time_taken, expected,
+     CASE
+       WHEN correct = true AND time_taken <= expected THEN 'optimal'
+       WHEN correct = true AND time_taken > expected THEN 'methodical'
+       WHEN correct = false AND time_taken <= expected THEN 'reckless'
+       WHEN correct = false AND time_taken > expected THEN 'struggling'
+     END as behavior
+SET qr.behavior = behavior
+RETURN q.questionid, correct, time_taken, expected, behavior
 ```
 
-**Aggregating Entire Class Performance:**
+### Example Cypher: GraphRAG Retrieval
+This query traverses the graph to find chunks related to a specific topic within a class the student is enrolled in, completely avoiding traditional vector similarity searches.
 ```cypher
-MATCH (c:Class {classid: $class_id})<-[:ENROLLED_IN]-(s:Student)
-MATCH (s)-[:HAS_ATTEMPT]->(a:Attempt)-[:POSTED_TO|FOR_QUIZ*1..2]->(c)
-MATCH (a)-[:HAS_RESPONSE]->(qr:QuestionResponse)
-RETURN count(qr) AS total_questions, avg(qr.time_taken) AS avg_time, sum(CASE WHEN qr.is_correct THEN 1 ELSE 0 END) AS total_correct
+MATCH (s:Student {userid: $student_id})-[:ENROLLED_IN]->(c:Class {classid: $class_id})
+MATCH (c)-[:BELONGS_TO]->(sub:Subject)<-[:PART_OF]-(t:Topic {name: $topic_name})
+MATCH (ch:Chunk)-[:RELATES_TO]->(t)
+MATCH (ch)-[:PART_OF]->(d:Document)-[:UPLOADED_TO]->(c)
+RETURN ch.text AS chunk_text, d.filename AS source
 ```
-
-**Graph-RAG Document Mapping:**
-```cypher
-MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(sub:Subject)
-MATCH (ch:Chunk {chunkid: $chunk_id})
-MATCH (t:Topic {name: $topic_name})-[:PART_OF]->(sub)
-MERGE (ch)-[:RELATES_TO]->(t)
-```
-
----
-
-## 6. Authentication & Authorization
-
-### Authentication (Bcrypt & Neo4j)
-The bcrypt hashes are stored directly in the Neo4j database on the `(Student)` and `(Teacher)` nodes.
-1. The frontend sends the raw password.
-2. The backend generates a secure hash using `bcrypt`.
-3. During login, `bcrypt.checkpw()` compares the input against the stored `password_hash`. If valid, it generates a JWT.
-
-### The JSON Web Token (JWT)
-A brand new, completely unique JWT is generated every single time a user logs in. The token securely encodes:
-- `sub` (Subject): The user's unique ID.
-- `role`: Their system role (`student` or `teacher`).
-
-### Authorization (FastAPI & MCP RBAC)
-We use **FastAPI Dependency Injection** to enforce Role-Based Access Control via `require_student()` and `require_teacher()` guards.
-Additionally, when the Chatbot connects, `mcp_client.py` looks at the `role` inside the JWT and physically deletes all tools from the LLM's prompt that do not start with the user's role prefix. This guarantees a student cannot accidentally trick the AI into running `teacher_get_student_performance`!

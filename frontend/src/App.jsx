@@ -61,7 +61,7 @@ export default function App() {
     return (
       <>
         <TeacherDashboard teacher={user} onLogout={handleLogout} />
-        <ChatbotWidget role={user.role} isQuizActive={false} />
+        <ChatbotWidget role={user.role} userId={user.userid} isQuizActive={false} />
       </>
     );
   }
@@ -74,7 +74,7 @@ export default function App() {
         onQuizStart={() => setIsQuizActive(true)}
         onQuizEnd={() => setIsQuizActive(false)}
       />
-      <ChatbotWidget role={user.role} isQuizActive={isQuizActive} />
+      <ChatbotWidget role={user.role} userId={user.userid} isQuizActive={isQuizActive} />
     </>
   );
 }

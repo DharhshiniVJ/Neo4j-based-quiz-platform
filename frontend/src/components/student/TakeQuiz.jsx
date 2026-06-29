@@ -68,13 +68,11 @@ export default function TakeQuiz({ student, quiz, onDone, onBack }) {
   });
 
   const advance = (status) => {
-    const response = buildResponse(status);
-    // Save first answer + revision refs keyed by index before moving
+    // Save current answer state before moving
     savedFirstAnswers.current[index] = firstAnswerRef.current;
     savedRevisions.current[index] = revisionCountRef.current;
-    // Upsert into responses array at the current index position
     const updated = [...responses];
-    updated[index] = response;
+    updated[index] = buildResponse(status);
     setResponses(updated);
 
     if (isLast) {
@@ -97,9 +95,19 @@ export default function TakeQuiz({ student, quiz, onDone, onBack }) {
   };
 
   const handleSubmit = async (finalResponses) => {
+    if (submitting) return; // Prevent double submits if state caught it
     setSubmitting(true);
+    
+    // Ensure the current answer is included in the final responses array
+    const currentAnswer = answer || firstAnswerRef.current;
+    if (currentAnswer) {
+        finalResponses[index] = buildResponse(answer ? "answered" : "skipped");
+    } else {
+        finalResponses[index] = buildResponse("skipped");
+    }
+
     const payload = {
-      attempt_id: `ATT-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+      attempt_id: attemptIdRef.current,
       student_id: student.userid,
       quiz_id: quiz.quizid,
       timestamp: new Date().toISOString(),

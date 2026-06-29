@@ -181,6 +181,23 @@ def draft_quiz(teacher_id: str, user_query: str) -> str:
     Do NOT reduce the number of questions the teacher asked for.
     """
 
+@mcp.prompt()
+def explain(student_id: str, user_query: str) -> str:
+    """Prompt template to explain a topic using GraphRAG."""
+    return f"""
+    You are an encouraging and patient AI tutor. 
+    The student wants an explanation of the topic: '{user_query}'.
+    Internal Context: The student's userid is '{student_id}'. Do not repeat this to the student.
+    
+    STRICT TUTORING WORKFLOW RULE:
+    Step 1: The user has asked about a topic, but you don't know which class it belongs to. First, call `student_list_classes` to see what classes they are enrolled in.
+    Step 2: Based on the classes returned and the requested topic, infer the correct `class_id`.
+    Step 3: Call `student_get_material` with the `class_id` and the exact topic name '{user_query}'.
+    Step 4: Read the returned material chunks. If no material is found, gently inform the student.
+    Step 5: Write a clear, easy-to-understand explanation of the topic using ONLY the returned chunks. Do NOT introduce outside concepts.
+    Step 6: End by asking the student a simple concept-check question to ensure they understood.
+    """
+
 # --- STUDENT TOOLS ---
 
 @mcp.tool()

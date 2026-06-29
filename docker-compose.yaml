@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # 1. Neo4j Graph Database
+  neo4j_db:
+    image: neo4j:5.12-community
+    ports:
+      - "7474:7474" # Browser UI
+      - "7687:7687" # Bolt Protocol (Python connection)
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+
+  # 2. FastAPI Backend
+  mcp_backend:
+    build: 
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
+      - NEO4J_URI=bolt://neo4j_db:7687
+      - NEO4J_PASSWORD=password
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - neo4j_db
+
+  # 3. React Frontend
+  react_frontend:
+    build: 
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - mcp_backend
+
+volumes:
+  neo4j_data:
+  neo4j_logs:

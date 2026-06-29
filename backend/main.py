@@ -348,7 +348,7 @@ def get_class_topics(class_id: str, current_user: dict = Depends(require_teacher
         result = session.run("""
             MATCH (c:Class {classid: $class_id})-[:BELONGS_TO]->(sub:Subject)
             MATCH (t:Topic)-[:PART_OF]->(sub)
-            RETURN t.topicid AS topicid, t.name AS name, t.area AS area
+            RETURN t.topicid AS topicid, t.name AS name
             ORDER BY t.topicid
         """, class_id=class_id)
         return [dict(record) for record in result]
