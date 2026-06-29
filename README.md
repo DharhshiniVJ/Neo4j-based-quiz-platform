@@ -59,18 +59,18 @@ graph LR
     classDef cache fill:#64748b,stroke:#334155,stroke-width:2px,color:#fff;
 
     %% Nodes
-    UI[Frontend\nReact / Vite] ::: ui
-    API[FastAPI\nREST Endpoints] ::: api
+    UI["Frontend<br/>React / Vite"] ::: ui
+    API["FastAPI<br/>REST Endpoints"] ::: api
     
     subgraph Caching_Layer [Dual-Layer Cache]
-        LRU[L1: In-Memory\nLRU Cache] ::: cache
-        Redis[(L2: Redis\nFallback)] ::: cache
+        LRU["L1: In-Memory<br/>LRU Cache"] ::: cache
+        Redis[("L2: Redis<br/>Fallback")] ::: cache
     end
     
-    MCP_Client[MCP Client\nOrchestrator] ::: client
-    MCP_Server[MCP Server\nTool Provider] ::: server
-    LLM[Cerebras AI\nInference] ::: llm
-    Neo4j[(Neo4j Backend\nGraph Database)] ::: db
+    MCP_Client["MCP Client<br/>Orchestrator"] ::: client
+    MCP_Server["MCP Server<br/>Tool Provider"] ::: server
+    LLM["Cerebras AI<br/>Inference"] ::: llm
+    Neo4j[("Neo4j Backend<br/>Graph Database")] ::: db
 
     %% Connections
     UI <-->|HTTP / REST| API
