@@ -2,7 +2,7 @@
 
 StudyDB is a full-stack, AI-driven educational platform that goes beyond standard testing. It uses a proprietary **Behavioral Evaluation Matrix** to analyze student performance at the millisecond level, and leverages **GraphRAG** via the **Model Context Protocol (MCP)** to provide context-aware, curriculum-grounded AI tutoring.
 
-## 🚀 Key Features
+## Key Features
 
 ### 1. Proprietary Behavioral Matrix
 Instead of just scoring students as "Right" or "Wrong", StudyDB categorizes real-time student performance into four cognitive profiles based on expected-time baselines:
@@ -34,7 +34,7 @@ Unlike most projects that just plug into Claude Desktop, StudyDB implements **bo
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend:** React, Vite, CSS (Custom Brutalist Design System)
 - **Backend:** Python, FastAPI, Model Context Protocol (MCP) SDK, PyPDF
@@ -45,7 +45,7 @@ Unlike most projects that just plug into Claude Desktop, StudyDB implements **bo
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 graph LR
@@ -89,7 +89,7 @@ graph LR
 
 ---
 
-## 🚦 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Docker and Docker Compose
@@ -127,7 +127,7 @@ The seed script creates the following default users (Password for all is `studyd
 
 ---
 
-## 🧠 Database Schema & Cypher (Neo4j)
+## Database Schema & Cypher (Neo4j)
 
 StudyDB leverages a native graph structure to track relationships between users, curriculum, and performance.
 
@@ -171,7 +171,7 @@ RETURN ch.text AS chunk_text, d.filename AS source
 
 ---
 
-## 🔮 Future Work: Towards an AI Harness
+## Future Work: Towards an AI Harness
 
 Since the tech world is moving towards an AI-Harness-based development environment, I am also trying to explore how AI-harness engineering works. As a part of that, these are my future ideas :
 
