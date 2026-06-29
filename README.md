@@ -176,7 +176,7 @@ RETURN ch.text AS chunk_text, d.filename AS source
 
 ---
 
-## Future Work: Towards an AI Harness
+## Future Work:
 
 Since the tech world is moving towards an AI-Harness-based development environment, I am also trying to explore how AI-harness engineering works. As a part of that, these are my future ideas :
 
