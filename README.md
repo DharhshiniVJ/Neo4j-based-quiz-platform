@@ -22,6 +22,7 @@ Unlike most projects that just plug into Claude Desktop, StudyDB implements **bo
 - **MCP Server:** Exposes backend capabilities as standard MCP Tools, Prompts, and Resources.
 - **MCP Client (`mcp_client.py`):** A custom Python SSE client that orchestrates the multi-step reasoning loop between the Cerebras LLM and the MCP Server.
 - **Tools (Executable Actions):** The LLM can dynamically call tools to fetch student performance (`student_get_performance`), retrieve GraphRAG materials (`student_get_material`), or draft new quizzes (`teacher_generate_quiz_draft`).
+- **MCP Caching Decorators:** Tool calls and resource fetches are optimized using custom caching decorators, ensuring that identical queries (e.g., fetching the same topic chunks repeatedly during a chat session) hit the in-memory cache instantly rather than repeatedly querying Neo4j.
 - **Prompts (Workflows):** Strict, multi-step prompt templates (e.g., `/explain`, `/draft_quiz`) force the AI into structured behaviors, effectively acting as agentic state machines.
 - **Resources (Context):** The AI is given explicit, read-only context boundaries (e.g., `db://schema`, `docs://quiz_guidelines`) to prevent hallucinations.
 - **AI-Driven Generative UI (Action Interceptor Loop):** The custom MCP Client uses an action interceptor loop to catch specific tool calls and convert them into React state events. Instead of just returning text, the LLM can actively manipulate the frontend DOM (e.g., automatically popping open a Quiz Creation modal pre-filled with AI-generated questions).
@@ -71,6 +72,7 @@ graph LR
     API <-->|Route Chat| MCP_Client
     MCP_Client <-->|Server-Sent Events| MCP_Server
     MCP_Client <-->|Prompts & Tool Calls| LLM
+    MCP_Server <-->|@mcp.cached Tool Calls| LRU
     MCP_Server <-->|Cypher Queries| Neo4j
 
     classDef ui fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff
