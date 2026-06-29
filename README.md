@@ -24,7 +24,7 @@ Unlike most projects that just plug into Claude Desktop, StudyDB implements **bo
 - **Tools (Executable Actions):** The LLM can dynamically call tools to fetch student performance (`student_get_performance`), retrieve GraphRAG materials (`student_get_material`), or draft new quizzes (`teacher_generate_quiz_draft`).
 - **Prompts (Workflows):** Strict, multi-step prompt templates (e.g., `/explain`, `/draft_quiz`) force the AI into structured behaviors, effectively acting as agentic state machines.
 - **Resources (Context):** The AI is given explicit, read-only context boundaries (e.g., `db://schema`, `docs://quiz_guidelines`) to prevent hallucinations.
-- **Client-Side Interception:** The custom MCP Client intercepts specific tool calls before they hit the LLM to trigger frontend React state changes (like popping open a quiz creation modal).
+- **AI-Driven Generative UI (Action Interceptor Loop):** The custom MCP Client uses an action interceptor loop to catch specific tool calls and convert them into React state events. Instead of just returning text, the LLM can actively manipulate the frontend DOM (e.g., automatically popping open a Quiz Creation modal pre-filled with AI-generated questions).
 
 ### 4. Full-Stack Orchestration
 - **Frontend:** React (Vite) with custom Brutalist UI components.
@@ -48,18 +48,43 @@ Unlike most projects that just plug into Claude Desktop, StudyDB implements **bo
 ## 🏗️ Architecture
 
 ```mermaid
-graph TD
-    UI[React Frontend] <-->|REST API & JWT| API[FastAPI Backend]
-    API <-->|Bolt Protocol| DB[(Neo4j Graph DB)]
-    API <-->|Internal Orchestration| MCP_Client[Custom MCP Client]
-    MCP_Client <-->|Model Context Protocol| MCP_Server[MCP Server]
-    MCP_Client <-->|API| AI[Cerebras AI / LLM]
+graph LR
+    %% Define simple styles
+    classDef ui fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff;
+    classDef api fill:#0284c7,stroke:#0369a1,stroke-width:2px,color:#fff;
+    classDef client fill:#10b981,stroke:#047857,stroke-width:2px,color:#fff;
+    classDef server fill:#8b5cf6,stroke:#4c1d95,stroke-width:2px,color:#fff;
+    classDef llm fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#fff;
+    classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#fff;
+    class/cache fill:#64748b,stroke:#334155,stroke-width:2px,color:#fff;
+
+    %% Nodes
+    UI[Frontend\nReact / Vite] ::: ui
+    API[FastAPI\nREST Endpoints] ::: api
     
-    subgraph Data Ingestion
-    PDF[Teacher Uploads PDF] --> Chunk[PDF Chunker]
-    Chunk --> AI_Map[LLM Topic Mapping]
-    AI_Map --> DB
+    subgraph Caching_Layer [Dual-Layer Cache]
+        LRU[L1: In-Memory\nLRU Cache] ::: cache
+        Redis[(L2: Redis\nFallback)] ::: cache
     end
+    
+    MCP_Client[MCP Client\nOrchestrator] ::: client
+    MCP_Server[MCP Server\nTool Provider] ::: server
+    LLM[Cerebras AI\nInference] ::: llm
+    Neo4j[(Neo4j Backend\nGraph Database)] ::: db
+
+    %% Connections
+    UI <-->|HTTP / REST| API
+    
+    %% Dual Caching Logic
+    API <-->|1. Fast hit| LRU
+    API <-->|2. Fallback miss| Redis
+    API <-->|3. Hard miss| Neo4j
+    
+    %% AI Flow
+    API <-->|Route Chat| MCP_Client
+    MCP_Client <-->|Server-Sent Events| MCP_Server
+    MCP_Client <-->|Prompts & Tool Calls| LLM
+    MCP_Server <-->|Cypher Queries| Neo4j
 ```
 
 ---
@@ -148,7 +173,7 @@ RETURN ch.text AS chunk_text, d.filename AS source
 
 ## 🔮 Future Work: Towards an AI Harness
 
-The ultimate vision for StudyDB is to evolve from a standalone application into a generalized **AI Harness** for educational platforms. To achieve this, the following architectural milestones are planned:
+Since the tech world is moving towards an AI-Harness-based development environment, I am also trying to explore how AI-harness engineering works. As a part of that, these are my future ideas :
 
 ### 1. Developer Experience (DX) & Agentic Harness via `SKILL.md`
 As the tech world moves toward AI-assisted engineering and "Harness" environments, repositories must be optimized not just for human developers, but for AI agents. We have already implemented `.agents/skills/studydb_neo4j/SKILL.md` in this repository. This declarative skill file acts as the project's "brain", injecting our Neo4j schema, Behavioral Matrix logic, and architectural rules directly into the context window of any AI coding assistant (like Claude or Gemini) working on the codebase. This guarantees that future AI-driven development strictly adheres to our design patterns.
